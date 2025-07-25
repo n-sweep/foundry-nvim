@@ -1,0 +1,239 @@
+local Logging = require('utils.logging')
+local logger = Logging:get_logger('foundry_logger')
+
+local M = {
+    delimiter = '# %%',
+    ns = vim.api.nvim_create_namespace('foundry-nvim'),
+    marks = {}
+}
+
+
+function M.executor(_)
+    logger:warn('cell executor not set')
+end
+
+
+function M.set_executor(func)
+    M.executor = func
+end
+
+
+local function get_next_cell_separator()
+    return vim.fn.search(M.delimiter, 'nW')
+end
+
+
+local function get_current_cell_separator()
+    -- find cell divider above cursor
+    if vim.fn.getline("."):find(M.delimiter) ~= nil then
+        return vim.api.nvim_win_get_cursor(0)[1]
+    else
+        return vim.fn.search(M.delimiter, 'nbW')
+    end
+end
+
+
+local function get_prev_cell_separator()
+    -- move to the start of the current cell then search backward for the previous
+    local current_pos = vim.api.nvim_win_get_cursor(0)
+    vim.api.nvim_win_set_cursor(0, {get_current_cell_separator(), 0})
+    local prev_cell_line = vim.fn.search(M.delimiter, 'nbW')
+    vim.api.nvim_win_set_cursor(0, current_pos)
+    return prev_cell_line
+end
+
+
+local function get_selected_lines()
+    local vstart = vim.fn.getpos("v")
+    local vend = vim.fn.getpos(".")
+
+    -- if the selection was made backward, flip start and end
+    if vstart[2] > vend[2] then
+        vend = vim.fn.getpos("v")
+        vstart = vim.fn.getpos(".")
+    end
+
+    return vim.fn.getline(vstart[2], vend[2])
+end
+
+
+local function create_cell(cstart, cend)
+    -- create a new cell defined by extmarks
+
+    -- 0-based indexing
+    cstart = cstart - 1
+    cend = cend - 1
+
+    local start_mark = vim.api.nvim_buf_set_extmark(0, M.ns, cstart, 0, {
+        end_row = cend,
+        end_col = 0,
+        end_right_gravity = true,
+        -- hl_group = 'IncSearch'  -- debug
+    })
+
+    -- store relationship between cell mark and it's output display mark
+    M.marks[start_mark] = vim.api.nvim_buf_set_extmark(0, M.ns, cend, 0, {
+        virt_lines = {
+            { { "Out[...]: On Hold", 'Comment' } }
+        },
+        virt_lines_above = true
+    })
+
+    logger:info('New cell ' .. start_mark .. ' created')
+
+    return start_mark
+end
+
+
+local function get_extmark_under_cursor()
+    -- look for an extmark under the cursor position
+
+    local row = vim.api.nvim_win_get_cursor(0)[1] - 1  -- 0-based indexing
+    local extmarks = vim.api.nvim_buf_get_extmarks(0, M.ns, 0, -1, { details = true })
+
+    for _, extmark in ipairs(extmarks) do
+        local id, start_row, details = extmark[1], extmark[2], extmark[4]
+        if details and details.end_row then
+            if row >= start_row and row <= details.end_row then
+                return id
+            end
+        end
+    end
+
+    return 0
+end
+
+
+local function get_cell_under_cursor()
+    -- get the extmark id of the cell under the cursor
+
+    local cell = get_extmark_under_cursor()
+
+    if cell > 0 then
+        return cell
+    end
+
+    -- get start of current and next cells
+    local cstart = get_current_cell_separator()
+    local cend = get_next_cell_separator() - 1
+
+    -- if cend is zero (last cell), replace with the end of the buffer
+    if cend < 1 then
+        cend = vim.fn.line("$")
+    end
+
+    return create_cell(cstart, cend)
+end
+
+
+local function get_cell_content(cell_id)
+    -- get the content of a cell based on id
+
+    local extmark = vim.api.nvim_buf_get_extmark_by_id(0, M.ns, cell_id, { details = true })
+    local start_row, details = extmark[1], extmark[3]
+    local end_row = details.end_row
+
+    return vim.fn.getline(start_row + 2, end_row)
+end
+
+
+local function find_cell_display_fallback(cell_id)
+    -- when reloading files with :so during development, the M.marks table is lost, losing the
+    -- relationship between a cell extmark and it's display extmark. when this happens,
+    -- `output_mark_id` is nil. in this case we search for the associate cell by location.
+    -- this should not happen in production (???)
+
+    -- get cell's mark
+    local cell_mark = vim.api.nvim_buf_get_extmark_by_id(0, M.ns, cell_id, { details = true })
+    local end_row = cell_mark[3].end_row
+
+    -- get all extmarks
+    local extmarks = vim.api.nvim_buf_get_extmarks(0, M.ns, 0, -1, { details = true })
+
+    -- find the mark which has a start location matching the end location of the given cell
+    for _, extmark in ipairs(extmarks) do
+        local id, start_row = extmark[1], extmark[2]
+        if start_row == end_row then
+            M.marks[cell_id] = id
+            return id
+        end
+    end
+end
+
+
+function M.update_cell_output(cell_id, lines)
+    -- given a cell id and some text, update that cell's display with the given text
+
+    local output_mark_id = M.marks[cell_id]
+
+    if output_mark_id == nil then
+        output_mark_id = find_cell_display_fallback(cell_id)
+    end
+
+    local extmark = vim.api.nvim_buf_get_extmark_by_id(0, M.ns, output_mark_id, {})
+    local row = extmark[1]
+    local output_lines = {}
+
+    for _, line in ipairs(lines) do
+        table.insert(output_lines, { { line, 'Comment' } })
+    end
+
+    vim.api.nvim_buf_set_extmark(0, M.ns, row, 0, {
+        id = output_mark_id,
+        virt_lines = output_lines,
+        virt_lines_above = true
+    })
+end
+
+
+function M.handle_execution_result(result)
+    local cell_id = result.id
+    local ex_count = result.execution_count
+    local text = result.output.data['text/plain']
+    text = "Out[" .. ex_count .. "]: Done\n" .. text
+    local lines = vim.split(text, '\n', { trimempty = true })
+
+    M.update_cell_output(cell_id, lines)
+end
+
+
+function M.get_execution_input()
+    local input
+    local cell_id = get_cell_under_cursor()
+
+    -- prioritize selections first
+    local mode = vim.api.nvim_get_mode()['mode']
+    if mode == 'v' or mode == 'V' or mode == '^V' then
+        input = get_selected_lines()
+        -- exit select mode
+        vim.api.nvim_input('<Esc>')
+    else
+        input = get_cell_content(cell_id)
+    end
+
+    -- join lines together and strip whitespace
+    local code = table.concat(input, '\n'):match("^%s*(.-)%s*$")
+
+    return { cell_id, code }
+end
+
+
+function M.execute_cell()
+    local input = M.get_execution_input()
+    local cell_id = input[1]
+    M.update_cell_output(cell_id, { "Out[...]: Pending" })
+    M.executor(input)
+end
+
+
+function M.goto_next_cell()
+    vim.api.nvim_win_set_cursor(0, {get_next_cell_separator(), 0})
+end
+
+
+function M.goto_prev_cell()
+    vim.api.nvim_win_set_cursor(0, {get_prev_cell_separator(), 0})
+end
+
+
+return M

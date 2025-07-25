@@ -1,0 +1,12 @@
+[project]
+name = "foundry-nvim"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "ipykernel>=6.29.5",
+    "jupyter-client>=8.6.3",
+    "pynvim>=0.5.2",
+    "pyperclip>=1.9.0",
+]
