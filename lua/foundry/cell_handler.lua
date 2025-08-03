@@ -1,4 +1,4 @@
-local Logging = require('utils.logging')
+local Logging = require('foundry.logging')
 local logger = Logging:get_logger('foundry_logger')
 
 local M = {
@@ -75,7 +75,7 @@ local function create_cell(cstart, cend)
         virt_lines_above = true
     })
 
-    logger:info('New cell ' .. start_mark .. ' created')
+    logger:info('New cell created: ' .. start_mark)
 
     return start_mark
 end

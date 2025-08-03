@@ -13,7 +13,20 @@ local M = {
 }
 
 
-function M.setup(plugin_root)
+function M.stop()
+
+    if M.status == 'inactive' then
+        return
+    elseif M.status == 'active' then
+        M.status = 'inactive'
+        M.delete_all_cells()
+        bridge.stop()
+    end
+
+end
+
+
+function M.start(plugin_root)
 
     -- if foundry is already active, skip
     if M.status == 'active' then
@@ -65,7 +78,7 @@ function M.setup(plugin_root)
 
     -- keymaps ---------------------------------------------------------------------
 
-    -- execution keys
+    -- send keys
     -- ctrl + enter runs a cell
     vim.keymap.set({'n', 'v'}, '<F33>', M.execute_cell, { buffer = 0 })
 

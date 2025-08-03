@@ -9,20 +9,13 @@ package.path = (
 )
 
 
-package.loaded['foundry'] = nil
-package.loaded['foundry.init'] = nil
-package.loaded['foundry.ipy_bridge'] = nil
-package.loaded['foundry.cell_handler'] = nil
-package.loaded['utils.logging'] = nil
-
-
 -- start ipython when an .ipynb file is opened
 vim.api.nvim_create_autocmd('BufEnter', {
     pattern = '*.ipynb',
     callback = function()
 
         -- set up a new logger
-        local Logging = require('utils.logging')
+        local Logging = require('foundry.logging')
         -- local logger = Logging:new(plugin_dir .. '/logs/foundry-nvim-lua.log', 'foundry_logger')
         Logging:new(vim.fn.stdpath('state') .. '/foundry-nvim-lua.log', 'foundry_logger')
 

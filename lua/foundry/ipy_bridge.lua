@@ -1,4 +1,4 @@
-local Logging = require('utils.logging')
+local Logging = require('foundry.logging')
 local logger = Logging:get_logger('foundry_logger')
 
 local M = {
