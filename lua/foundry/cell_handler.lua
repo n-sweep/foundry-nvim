@@ -8,14 +8,7 @@ local M = {
 }
 
 
-function M.executor(_)
-    logger:warn('cell executor not set')
-end
-
-
-function M.set_executor(func)
-    M.executor = func
-end
+-- Local functions -------------------------------------------------------------
 
 
 local function get_next_cell_separator()
@@ -25,7 +18,8 @@ end
 
 local function get_current_cell_separator()
     -- find cell divider above cursor
-    if vim.fn.getline("."):find(M.delimiter) ~= nil then
+    local line = vim.fn.getline(".")
+    if line:find(M.delimiter) and not line:find('markdown') then
         return vim.api.nvim_win_get_cursor(0)[1]
     else
         return vim.fn.search(M.delimiter, 'nbW')
@@ -68,6 +62,8 @@ local function create_cell(cstart, cend)
         end_row = cend,
         end_col = 0,
         end_right_gravity = true,
+        virt_text = {{ 'In[...]', 'Comment' }},
+        virt_text_pos = 'inline',
         -- hl_group = 'IncSearch'  -- debug
     })
 
@@ -88,7 +84,8 @@ end
 local function get_extmark_under_cursor()
     -- look for an extmark under the cursor position
 
-    local row = vim.api.nvim_win_get_cursor(0)[1] - 1  -- 0-based indexing
+    -- local row = vim.api.nvim_win_get_cursor(0)[1] - 1  -- 0-based indexing
+    local row = get_current_cell_separator()
     local extmarks = vim.api.nvim_buf_get_extmarks(0, M.ns, 0, -1, { details = true })
 
     for _, extmark in ipairs(extmarks) do
@@ -114,10 +111,15 @@ local function get_cell_under_cursor()
     end
 
     -- get start of current and next cells
+
+    -- if cstart is zero, no active cell and no valid cell pattern were found under the cursor
     local cstart = get_current_cell_separator()
-    local cend = get_next_cell_separator() - 1
+    if cstart < 1 then
+        print("Foundry: No cell found")
+    end
 
     -- if cend is zero (last cell), replace with the end of the buffer
+    local cend = get_next_cell_separator() - 1
     if cend < 1 then
         cend = vim.fn.line("$")
     end
@@ -143,6 +145,8 @@ local function find_cell_display_fallback(cell_id)
     -- `output_mark_id` is nil. in this case we search for the associate cell by location.
     -- this should not happen in production (???)
 
+    logger:warn('cell ' .. cell_id .. ' display not found; using fallback fuction')
+
     -- get cell's mark
     local cell_mark = vim.api.nvim_buf_get_extmark_by_id(0, M.ns, cell_id, { details = true })
     local end_row = cell_mark[3].end_row
@@ -161,8 +165,66 @@ local function find_cell_display_fallback(cell_id)
 end
 
 
-function M.update_cell_output(cell_id, lines)
+-- Module functions ------------------------------------------------------------
+
+
+function M.executor(_)
+    -- set at runtime by foundry.init.setup()
+    logger:warn('cell executor not set')
+end
+
+
+function M.set_executor(func)
+    M.executor = func
+end
+
+
+function M.goto_next_cell()
+    vim.api.nvim_win_set_cursor(0, {get_next_cell_separator(), 0})
+end
+
+
+function M.goto_prev_cell()
+    vim.api.nvim_win_set_cursor(0, {get_prev_cell_separator(), 0})
+end
+
+
+function M.delete_cell()
+    -- delete a cell's extmark and it's output extmark
+
+    local cell_id = get_cell_under_cursor()
+    local cell_output_id = M.marks[cell_id]
+
+    vim.api.nvim_buf_del_extmark(0, M.ns, cell_id)
+    vim.api.nvim_buf_del_extmark(0, M.ns, cell_output_id)
+end
+
+
+function M.delete_all_cells()
+    for cell_id, cell_output_id in pairs(M.marks) do
+        vim.api.nvim_buf_del_extmark(0, M.ns, cell_id)
+        vim.api.nvim_buf_del_extmark(0, M.ns, cell_output_id)
+    end
+end
+
+
+function M.update_cell_output(cell_id, lines, input_text)
     -- given a cell id and some text, update that cell's display with the given text
+
+    if input_text ~= nil then
+        local extmark = vim.api.nvim_buf_get_extmark_by_id(0, M.ns, cell_id, { details = true })
+        local row, details = extmark[1], extmark[3]
+
+        vim.api.nvim_buf_set_extmark(0, M.ns, row, 0, {
+            id = cell_id,
+            end_row = details.end_row,
+            end_col = 0,
+            end_right_gravity = true,
+            virt_text = {{ input_text .. ' ', 'Comment' }},
+            virt_text_pos = 'inline',
+        })
+
+    end
 
     local output_mark_id = M.marks[cell_id]
 
@@ -183,21 +245,13 @@ function M.update_cell_output(cell_id, lines)
         virt_lines = output_lines,
         virt_lines_above = true
     })
-end
 
-
-function M.handle_execution_result(result)
-    local cell_id = result.id
-    local ex_count = result.execution_count
-    local text = result.output.data['text/plain']
-    text = "Out[" .. ex_count .. "]: Done\n" .. text
-    local lines = vim.split(text, '\n', { trimempty = true })
-
-    M.update_cell_output(cell_id, lines)
 end
 
 
 function M.get_execution_input()
+    -- get the content of the cell under the cursor for execution
+
     local input
     local cell_id = get_cell_under_cursor()
 
@@ -221,18 +275,56 @@ end
 function M.execute_cell()
     local input = M.get_execution_input()
     local cell_id = input[1]
-    M.update_cell_output(cell_id, { "Out[...]: Pending" })
+    M.update_cell_output(cell_id, { "Out[*]: Running" }, 'In[*]')
     M.executor(input)
 end
 
 
-function M.goto_next_cell()
-    vim.api.nvim_win_set_cursor(0, {get_next_cell_separator(), 0})
+function M.handle_execution_result(result)
+    -- handle results from ipython based on status
+
+    local content, status
+    local exc = result.execution_count
+
+    if result.status == 'ok' then
+        status = 'Done'
+        if result.type == 'execute_result' then
+            content = vim.split(result.output.data['text/plain'], '\n', { trimempty = true })
+        elseif result.type == 'stream' then
+            content = vim.split(result.output, '\n', { trimempty = true })
+        end
+
+    elseif result.status == 'error' then
+        status = 'Error'
+        content = result.output.traceback['text/plain']
+        logger:error('ipython error reported')
+
+    elseif result.status == 'ipy_down' then
+        status = 'Error'
+        content = { 'IPython Down' }
+        exc = '...'
+
+    end
+
+    local header =  "Out[" .. exc .. "]: " .. status
+    local lines = { header }
+
+    for _, line in ipairs(content) do
+        table.insert(lines, line)
+    end
+
+    M.update_cell_output(result.cell_id, lines, "In[" .. exc .. "]")
 end
 
 
-function M.goto_prev_cell()
-    vim.api.nvim_win_set_cursor(0, {get_prev_cell_separator(), 0})
+function M.handle_ipy_message(message)
+
+    if message.type == 'shutdown' then
+        logger:info('ipython shutdown complete')
+    else
+        M.handle_execution_result(message)
+    end
+
 end
 
 

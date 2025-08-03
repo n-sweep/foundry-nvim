@@ -30,7 +30,7 @@ function Logging:log(message)
 
     if file then
         local timestamp = os.date('%Y-%m-%d %H:%M:%S')
-        file:write(string.format('[%s] %s\n', timestamp, message))
+        file:write(string.format('%s %s\n', timestamp, message))
         file:close()
     else
         error('failed to open logfile: ' .. self.filename)
@@ -39,9 +39,9 @@ function Logging:log(message)
 end
 
 
-function Logging:info(msg) self:log('[INFO] ' .. msg) end
-function Logging:warn(msg) self:log('[WARN] ' .. msg) end
-function Logging:error(msg) self:log('[ERR] ' .. msg) end
+function Logging:info(msg) self:log('INFO:' .. msg) end
+function Logging:warn(msg) self:log('WARN:' .. msg) end
+function Logging:error(msg) self:log('ERR:' .. msg) end
 
 
 return Logging

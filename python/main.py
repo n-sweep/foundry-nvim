@@ -3,70 +3,92 @@ import json
 import logging
 import traceback
 from datetime import datetime
-from kernel import Kernel
+from kernel import KernelManager
+
+if len(sys.argv) > 1:
+    logfile = f"{sys.argv[1]}/foundry-nvim-py.log"
+else:
+    logfile = './logs/foundry-nvim-py.log'
 
 logging.basicConfig(
-    filename='./logs/python.log',
-    # format="%(levelname)s:%(message)s",
+    filename=logfile,
+    format="%(asctime)s %(levelname)s:%(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
     encoding='utf-8',
     level=logging.INFO
 )
 
 
-def recursive_convert_datetime(inp: dict) -> dict:
-    """Recursively convert between datetime objects and iso format strings for JSON un/serialization"""
-    for key, val in inp.items():
-        if key == 'date':
-            if isinstance(val, str):
-                inp[key] = datetime.fromisoformat(val)
-            else:
-                inp[key] = val.isoformat()
-        elif isinstance(val, dict):
-            inp[key] = recursive_convert_datetime(val)
-
-    return inp
-
-
 def handle_datetimes(inp: dict) -> dict:
-    for key, messages in inp['messages'].items():
+    """Recursively convert between datetime objects and iso format strings for JSON un/serialization"""
+
+    def rfunc(inp: dict) -> dict:
+        for key, val in inp.items():
+            if key == 'date':
+                if isinstance(val, str):
+                    inp[key] = datetime.fromisoformat(val)
+                else:
+                    inp[key] = val.isoformat()
+            elif isinstance(val, dict):
+                inp[key] = rfunc(val)
+        return inp
+
+    for key, messages in inp.items():
         for msg in messages:
-            inp['messages'][key] = recursive_convert_datetime(msg)
+            inp[key] = rfunc(msg)
 
     return inp
+
+
+def write_to_lua(message: dict) -> None:
+    """write a dictionary to stdout as json"""
+
+    # datetime objects are not json serializable
+    if 'messages' in message:
+        message['messages'] = handle_datetimes(message['messages'])
+
+    sys.stdout.write(json.dumps(message) + '\n')
+    sys.stdout.flush()
 
 
 def main():
     output = {}
-    kn = Kernel()
+    kernel_mgr = KernelManager()
+
+    logging.info('Kernel manager initialized')
 
     try:
         while True:
             # read requests from lua
             req = json.loads(sys.stdin.readline())
             if req is None:
+                logging.error('Something is wrong! `req` is None')
                 break
 
-            if req['type'] == 'exec':
-                code = req['code']
-                result = kn.execute(code)
-                result['id'] = req['id']
-                output = handle_datetimes(result)
+            kn = kernel_mgr.get(req['id'])
 
-                # write the result to stdout
-                sys.stdout.write(json.dumps(output) + '\n')
-                sys.stdout.flush()
+            if req['type'] == 'exec':
+
+                output = {
+                    'cell_id': req['cell_id'],
+                    **kn.execute(req['code'])
+                }
+
+                write_to_lua(output)
 
             elif req['type'] == 'shutdown':
+                logging.info('Shutdown received from nvim')
+
                 kn.shutdown()
+
+            elif req['type'] == 'shutdown_all':
                 break
 
     except Exception:
-        logging.info(str(output))
         logging.error(traceback.format_exc())
 
     finally:
-        if kn.status != 'down':
-            kn.shutdown()
+        kernel_mgr.shutdown_all()
 
 
 if __name__ == "__main__":

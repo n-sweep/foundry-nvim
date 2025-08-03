@@ -8,40 +8,25 @@ package.path = (
     package.path
 )
 
-local Logging, foundry, logger
+
+package.loaded['foundry'] = nil
+package.loaded['foundry.init'] = nil
+package.loaded['foundry.ipy_bridge'] = nil
+package.loaded['foundry.cell_handler'] = nil
+package.loaded['utils.logging'] = nil
 
 
-local function reload()
-    -- quick reloading for dev
-    package.loaded['foundry'] = nil
-    package.loaded['foundry.init'] = nil
-    package.loaded['foundry.ipy_bridge'] = nil
-    package.loaded['foundry.cell_handler'] = nil
-    package.loaded['utils.logging'] = nil
+-- start ipython when an .ipynb file is opened
+vim.api.nvim_create_autocmd('BufEnter', {
+    pattern = '*.ipynb',
+    callback = function()
 
-    foundry = require('foundry')
-    Logging = require('utils.logging')
+        -- set up a new logger
+        local Logging = require('utils.logging')
+        -- local logger = Logging:new(plugin_dir .. '/logs/foundry-nvim-lua.log', 'foundry_logger')
+        Logging:new(vim.fn.stdpath('state') .. '/foundry-nvim-lua.log', 'foundry_logger')
 
-    logger = Logging:new('logs/lua.log', 'foundry_logger')
-    logger:info('Logger initialized: ' .. logger.name)
-end
+        require('foundry').setup(plugin_dir)
 
-
-reload()
-
-vim.api.nvim_create_user_command("FoundryStart", foundry.start, {})
-vim.api.nvim_create_user_command("FoundryShutdown", foundry.stop, {})
-vim.api.nvim_create_user_command("FoundryExecute", foundry.execute_cell, {})
-
--- send keys
--- ctrl + enter runs a cell
-vim.keymap.set({'n', 'v'}, '<F33>', foundry.execute_cell)
-
--- shift + enter runs a cell and sends the cursor to the next cell
-vim.keymap.set({'n', 'v'}, '<F34>', function() foundry.execute_cell() foundry.goto_next_cell() end)
-
--- shift + tab
-vim.keymap.set('n', '<F31>', function() foundry.goto_next_cell() end)
-
--- alt + tab
-vim.keymap.set('n', '<F32>', function() foundry.goto_prev_cell() end)
+    end
+})

@@ -12,9 +12,18 @@ The goal is to create a plugin that executes cell contents asynchronously and di
 
 We already have custom code to define, pull content from, and move between cells from aforementioned projects. What we need:
 
-- logging
-- execute code (ipython)
-    - manage output queue
-    - associate inputs with outputs (cell #s)
-- display the code in the buffer
-- copy the cell output to clipboard with a command
+- [x] logging
+- [x] execute code (ipython)
+    - [x] associate inputs with outputs (cell #s)
+- [x] display the code in the buffer
+- [x] automatic startup based on ipynb filetype
+- [x] automatic shutdown of current kernel when buffer closes
+- [x] automatic shutdown of all kernels when nvim closes
+- [x] delete cell
+- [x] delete all cells
+- [ ] delete a cell when its lines are deleted
+    - when start and end lines become the same value?
+    - when a cell's separator is deleted?
+- [ ] output openable in a popup window
+
+
