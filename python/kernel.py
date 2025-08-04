@@ -1,5 +1,7 @@
 import re
 import logging
+from time import sleep
+from queue import Empty
 from jupyter_client.manager import KernelManager as KM
 
 ansi_escape = re.compile(r'\x1b\[[0-9;]+m')  # ]]
@@ -21,6 +23,7 @@ def clean_traceback(tb: list) -> dict:
 class Kernel:
     def __init__(self, data: dict) -> None:
         self.vim_pid = data['pid']
+        self.buf = data['buffer']
         self.file = data['file']
         self.execution_count = 0
         self._startup()
@@ -35,10 +38,10 @@ class Kernel:
 
         self.status = 'idle'
 
-        logging.info(f'Kernel ready: {self.vim_pid} ({self.file})')
+        logging.info(f'Kernel ready: {self.vim_pid}_{self.buf} ({self.file})')
 
     def shutdown(self) -> None:
-        logging.info(f'Shutting down {self.vim_pid} ({self.file})')
+        logging.info(f'Shutting down {self.vim_pid}_{self.buf} ({self.file})')
         self.client.stop_channels()
         self.manager.shutdown_kernel()
         self.status = 'down'
@@ -57,9 +60,9 @@ class Kernel:
 
             try:
                 msg = self.client.get_iopub_msg(timeout=1)
-            except Exception:
-                logging.info('No messages')
-                return {'error': 'Error: no messages'}
+            except Empty:
+                sleep(0.25)
+                continue
 
             msg_type = msg['header']['msg_type']
 
@@ -120,17 +123,14 @@ class KernelManager:
         self.kernels = {}
 
     def get(self, id_data: dict) -> Kernel:
-        pid, fn = id_data['pid'], id_data['file']
-        if pid in self.kernels and fn in self.kernels[pid]:
-            return self.kernels[pid][fn]
-        else:
-            kn = Kernel(id_data)
-            self.kernels[pid] = {fn: kn}
+        kid = f"{id_data['pid']}_{id_data['buffer']}"
 
-            return kn
+        if kid not in self.kernels:
+            self.kernels[kid] = Kernel(id_data)
+
+        return self.kernels[kid]
 
     def shutdown_all(self) -> None:
-        for pids in self.kernels.values():
-            for kn in pids.values():
-                if kn.status != 'down':
-                    kn.shutdown()
+        for kn in self.kernels.values():
+            if kn.status != 'down':
+                kn.shutdown()

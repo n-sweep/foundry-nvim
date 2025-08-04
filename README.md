@@ -21,9 +21,9 @@ We already have custom code to define, pull content from, and move between cells
 - [x] automatic shutdown of all kernels when nvim closes
 - [x] delete cell
 - [x] delete all cells
-- [ ] delete a cell when its lines are deleted
-    - when start and end lines become the same value?
-    - when a cell's separator is deleted?
+- [x] delete invalid cells on edit. cells are invalid when:
+    - the start line of the cell is greater than or equal to the end line
+    - when a cell's separator is deleted
 - [ ] output openable in a popup window
 
 

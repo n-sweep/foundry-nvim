@@ -74,6 +74,7 @@ function M.start()
             }
         )
 
+        send_to_subprocess({ type = 'startup' })
         logger:info('job started: ' .. M.handle)
     end
 end

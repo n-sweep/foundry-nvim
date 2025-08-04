@@ -189,22 +189,41 @@ function M.goto_prev_cell()
 end
 
 
-function M.delete_cell()
+function M.delete_cell_by_id(cell_id)
     -- delete a cell's extmark and it's output extmark
-
-    local cell_id = get_cell_under_cursor()
     local cell_output_id = M.marks[cell_id]
 
     vim.api.nvim_buf_del_extmark(0, M.ns, cell_id)
     vim.api.nvim_buf_del_extmark(0, M.ns, cell_output_id)
+
+    M.marks[cell_id] = nil
+end
+
+
+function M.delete_cell_under_cursor()
+    local cell_id = get_cell_under_cursor()
+    M.delete_cell_by_id(cell_id)
 end
 
 
 function M.delete_all_cells()
-    for cell_id, cell_output_id in pairs(M.marks) do
-        vim.api.nvim_buf_del_extmark(0, M.ns, cell_id)
-        vim.api.nvim_buf_del_extmark(0, M.ns, cell_output_id)
+    for cell_id, _ in pairs(M.marks) do
+        M.delete_cell_by_id(cell_id)
     end
+end
+
+
+function M.is_valid_cell(cell_id)
+    local extmark = vim.api.nvim_buf_get_extmark_by_id(0, M.ns, cell_id, { details = true })
+    local start_row, details = extmark[1], extmark[3]
+
+    if start_row >= details.end_row then
+        return false
+    elseif string.find(vim.fn.getline(start_row + 1), "^# %%") == nil then
+        return false
+    end
+
+    return true
 end
 
 
@@ -292,6 +311,8 @@ function M.handle_execution_result(result)
             content = vim.split(result.output.data['text/plain'], '\n', { trimempty = true })
         elseif result.type == 'stream' then
             content = vim.split(result.output, '\n', { trimempty = true })
+        elseif result.type == 'empty' then
+            logger:info('emtpy')
         end
 
     elseif result.status == 'error' then
@@ -309,8 +330,10 @@ function M.handle_execution_result(result)
     local header =  "Out[" .. exc .. "]: " .. status
     local lines = { header }
 
-    for _, line in ipairs(content) do
-        table.insert(lines, line)
+    if content ~= nil then
+        for _, line in ipairs(content) do
+            table.insert(lines, line)
+        end
     end
 
     M.update_cell_output(result.cell_id, lines, "In[" .. exc .. "]")
