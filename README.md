@@ -24,6 +24,7 @@ We already have custom code to define, pull content from, and move between cells
 - [x] delete invalid cells on edit. cells are invalid when:
     - the start line of the cell is greater than or equal to the end line
     - when a cell's separator is deleted
-- [ ] output openable in a popup window
+- [x] output openable in a popup window
+- [x] yank cell output
 
 

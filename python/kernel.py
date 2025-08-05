@@ -3,6 +3,7 @@ import logging
 from time import sleep
 from queue import Empty
 from jupyter_client.manager import KernelManager as KM
+from zmq.error import ZMQError
 
 ansi_escape = re.compile(r'\x1b\[[0-9;]+m')  # ]]
 
@@ -41,10 +42,14 @@ class Kernel:
         logging.info(f'Kernel ready: {self.vim_pid}_{self.buf} ({self.file})')
 
     def shutdown(self) -> None:
+        if self.status == 'down':
+            return
+
         logging.info(f'Shutting down {self.vim_pid}_{self.buf} ({self.file})')
+
+        self.status = 'down'
         self.client.stop_channels()
         self.manager.shutdown_kernel()
-        self.status = 'down'
 
     def execute(self, *args, **kwargs) -> dict:
         self.client.execute(*args, **kwargs)
@@ -132,5 +137,4 @@ class KernelManager:
 
     def shutdown_all(self) -> None:
         for kn in self.kernels.values():
-            if kn.status != 'down':
-                kn.shutdown()
+            kn.shutdown()

@@ -165,6 +165,48 @@ local function find_cell_display_fallback(cell_id)
 end
 
 
+local function update_cell_output(cell_id, lines, input_text)
+    -- given a cell id and some text, update that cell's display with the given text
+    -- `input_text` is virtual text used as an input marker, eg `In[1]`
+
+    if input_text ~= nil then
+        local extmark = vim.api.nvim_buf_get_extmark_by_id(0, M.ns, cell_id, { details = true })
+        local row, details = extmark[1], extmark[3]
+
+        vim.api.nvim_buf_set_extmark(0, M.ns, row, 0, {
+            id = cell_id,
+            end_row = details.end_row,
+            end_col = 0,
+            end_right_gravity = true,
+            virt_text = {{ input_text .. ' ', 'Comment' }},
+            virt_text_pos = 'inline',
+        })
+
+    end
+
+    local output_mark_id = M.marks[cell_id]
+
+    if output_mark_id == nil then
+        output_mark_id = find_cell_display_fallback(cell_id)
+    end
+
+    local extmark = vim.api.nvim_buf_get_extmark_by_id(0, M.ns, output_mark_id, {})
+    local row = extmark[1]
+    local output_lines = {}
+
+    for _, line in ipairs(lines) do
+        table.insert(output_lines, { { line, 'Comment' } })
+    end
+
+    vim.api.nvim_buf_set_extmark(0, M.ns, row, 0, {
+        id = output_mark_id,
+        virt_lines = output_lines,
+        virt_lines_above = true
+    })
+
+end
+
+
 -- Module functions ------------------------------------------------------------
 
 
@@ -214,6 +256,8 @@ end
 
 
 function M.is_valid_cell(cell_id)
+    -- cells whose headers or content have been deleted are considered invalid
+
     local extmark = vim.api.nvim_buf_get_extmark_by_id(0, M.ns, cell_id, { details = true })
     local start_row, details = extmark[1], extmark[3]
 
@@ -224,47 +268,6 @@ function M.is_valid_cell(cell_id)
     end
 
     return true
-end
-
-
-function M.update_cell_output(cell_id, lines, input_text)
-    -- given a cell id and some text, update that cell's display with the given text
-
-    if input_text ~= nil then
-        local extmark = vim.api.nvim_buf_get_extmark_by_id(0, M.ns, cell_id, { details = true })
-        local row, details = extmark[1], extmark[3]
-
-        vim.api.nvim_buf_set_extmark(0, M.ns, row, 0, {
-            id = cell_id,
-            end_row = details.end_row,
-            end_col = 0,
-            end_right_gravity = true,
-            virt_text = {{ input_text .. ' ', 'Comment' }},
-            virt_text_pos = 'inline',
-        })
-
-    end
-
-    local output_mark_id = M.marks[cell_id]
-
-    if output_mark_id == nil then
-        output_mark_id = find_cell_display_fallback(cell_id)
-    end
-
-    local extmark = vim.api.nvim_buf_get_extmark_by_id(0, M.ns, output_mark_id, {})
-    local row = extmark[1]
-    local output_lines = {}
-
-    for _, line in ipairs(lines) do
-        table.insert(output_lines, { { line, 'Comment' } })
-    end
-
-    vim.api.nvim_buf_set_extmark(0, M.ns, row, 0, {
-        id = output_mark_id,
-        virt_lines = output_lines,
-        virt_lines_above = true
-    })
-
 end
 
 
@@ -294,7 +297,7 @@ end
 function M.execute_cell()
     local input = M.get_execution_input()
     local cell_id = input[1]
-    M.update_cell_output(cell_id, { "Out[*]: Running" }, 'In[*]')
+    update_cell_output(cell_id, { "Out[*]: Running" }, 'In[*]')
     M.executor(input)
 end
 
@@ -336,7 +339,7 @@ function M.handle_execution_result(result)
         end
     end
 
-    M.update_cell_output(result.cell_id, lines, "In[" .. exc .. "]")
+    update_cell_output(result.cell_id, lines, "In[" .. exc .. "]")
 end
 
 
@@ -348,6 +351,56 @@ function M.handle_ipy_message(message)
         M.handle_execution_result(message)
     end
 
+end
+
+
+function M.yank_cell_output()
+    -- add the cell's output content to yank registers & system clipboard
+
+    local output_cell_id = M.marks[get_extmark_under_cursor()]
+    local ext = vim.api.nvim_buf_get_extmark_by_id(0, M.ns, output_cell_id, { details = true })
+    local vlines = ext[3].virt_lines
+    local lines = {}
+
+    for i = 2, #vlines do
+        table.insert(lines, vlines[i][1][1])
+    end
+
+    local text = table.concat(lines, '\n')
+
+    for _, reg in ipairs({'"', '0', '+'}) do
+        vim.fn.setreg(reg, text)
+    end
+end
+
+
+function M.float_cell_output()
+    -- display the cell's output content in a floating window
+    -- `q` or `<ESC>` to close the floating window
+
+    local output_cell_id = M.marks[get_extmark_under_cursor()]
+    local ext = vim.api.nvim_buf_get_extmark_by_id(0, M.ns, output_cell_id, { details = true })
+    local row, details = ext[1], ext[3]
+    local buf = vim.api.nvim_create_buf(false, true)
+    local lines = {}
+
+    for _, line in ipairs(details.virt_lines) do
+        table.insert(lines, line[1][1])
+    end
+
+    vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+
+    vim.api.nvim_open_win(buf, true, {
+        relative = 'editor',
+        width = vim.api.nvim_win_get_width(0),
+        height = #lines,
+        row = row,
+        col = 0,
+    })
+
+    local opts = { noremap = true, silent = true }
+    vim.api.nvim_buf_set_keymap(buf, 'n', '<Esc>', '<cmd>bd!<CR>', opts)
+    vim.api.nvim_buf_set_keymap(buf, 'n', 'q', '<cmd>bd!<CR>', opts)
 end
 
 

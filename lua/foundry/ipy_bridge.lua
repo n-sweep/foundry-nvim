@@ -2,7 +2,7 @@ local Logging = require('foundry.logging')
 local logger = Logging:get_logger('foundry_logger')
 
 local M = {
-    handle = 0,
+    handles = {},
     plugin_root = nil,  -- set at runtime by foundry.init.setup()
 }
 
@@ -20,16 +20,19 @@ end
 
 local function send_to_subprocess(tbl)
 
+    local buf = vim.api.nvim_get_current_buf()
+    logger:info(vim.inspect(M.handles))
+
     -- add identifying information about vim
     tbl['id'] = {
         pid = vim.fn.getpid(),
-        buffer = vim.api.nvim_get_current_buf(),
+        buffer = buf,
         file = vim.api.nvim_buf_get_name(0),
     }
 
     local json = vim.fn.json_encode(tbl)
 
-    vim.fn.chansend(M.handle, json .. '\n')
+    vim.fn.chansend(M.handles[buf], json .. '\n')
 end
 
 
@@ -53,9 +56,12 @@ end
 
 
 local function on_exit(_, code, _)
-    if M.handle then
-        vim.fn.jobstop(M.handle)
-        M.handle = 0
+    local buf = vim.api.nvim_get_current_buf()
+    local handle = M.handles[buf]
+
+    if handle then
+        vim.fn.jobstop(handle)
+        handle = 0
         logger:info('subprocess exited')
     end
 end
@@ -63,9 +69,12 @@ end
 
 function M.start()
 
-    if M.handle == 0 then
+    local buf = vim.api.nvim_get_current_buf()
+    local handle = M.handles[buf]
 
-        M.handle = vim.fn.jobstart(
+    if (handle == nil) or (handle < 1) then
+
+        handle = vim.fn.jobstart(
             { 'python3', '-u', M.plugin_root .. '/python/main.py', vim.fn.stdpath('state') },
             {
                 on_stdout = on_stdout,
@@ -74,8 +83,10 @@ function M.start()
             }
         )
 
+        M.handles[buf] = handle
+
         send_to_subprocess({ type = 'startup' })
-        logger:info('job started: ' .. M.handle)
+        logger:info('job started: ' .. handle)
     end
 end
 
@@ -87,7 +98,9 @@ end
 
 function M.execute(input)
     local cell_id, code = input[1], input[2]
-    if M.handle > 0 then
+    local buf = vim.api.nvim_get_current_buf()
+
+    if M.handles[buf] > 0 then
         local msg = { type = 'exec', code = code, cell_id = cell_id }
         send_to_subprocess(msg)
     else
