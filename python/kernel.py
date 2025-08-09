@@ -2,8 +2,7 @@ import re
 import logging
 from time import sleep
 from queue import Empty
-from jupyter_client.manager import KernelManager as KM
-from zmq.error import ZMQError
+from jupyter_client.manager import KernelManager
 
 ansi_escape = re.compile(r'\x1b\[[0-9;]+m')  # ]]
 
@@ -22,15 +21,13 @@ def clean_traceback(tb: list) -> dict:
 
 
 class Kernel:
-    def __init__(self, data: dict) -> None:
-        self.vim_pid = data['pid']
-        self.buf = data['buffer']
-        self.file = data['file']
+    def __init__(self, metadata: dict) -> None:
+        self.metadata = metadata
+        self.vim_pid = metadata['pid']
+        self.file = metadata['file']
         self.execution_count = 0
-        self._startup()
 
-    def _startup(self) -> None:
-        self.manager = KM()
+        self.manager = KernelManager()
         self.manager.start_kernel()
 
         self.client = self.manager.client()
@@ -39,13 +36,13 @@ class Kernel:
 
         self.status = 'idle'
 
-        logging.info(f'Kernel ready: {self.vim_pid}_{self.buf} ({self.file})')
+        logging.info(f'Kernel ready: {self.file} ({self.vim_pid})')
 
     def shutdown(self) -> None:
         if self.status == 'down':
             return
 
-        logging.info(f'Shutting down {self.vim_pid}_{self.buf} ({self.file})')
+        logging.info(f'Shutting down kernel {self.file} ({self.vim_pid})')
 
         self.status = 'down'
         self.client.stop_channels()
@@ -58,7 +55,8 @@ class Kernel:
     def _retrieve_messages(self) -> dict:
         output = {
             'status': 'ok',
-            'messages': {}
+            'messages': {},
+            'text': ''
         }
 
         while True:
@@ -70,6 +68,7 @@ class Kernel:
                 continue
 
             msg_type = msg['header']['msg_type']
+            logging.info(f'Message: {msg_type}')
 
             # add message to output
             if msg_type in output['messages']:
@@ -86,34 +85,36 @@ class Kernel:
                 # when status becomes idle again, execution is complete
                 if status == 'idle':
                     output['execution_count'] = self.execution_count
+                    output['type'] = output['type'] if 'type' in output else 'execute_result'
                     return output
 
             elif msg_type == 'execute_input':
                 content = msg['content']
                 output['input'] = content
                 self.execution_count = content['execution_count']
-                logging.info(f"Input: {content}")
 
             elif msg_type == 'execute_result':
                 content = msg['content']
-                output['output'] = content
+                output['result'] = content
                 output['type'] = msg_type
-                logging.info(f"Result: {content['data']}")
+
+                output['text'] = '\n'.join([ output['text'], content['data']['text/plain'] ]).strip()
 
             elif msg_type == 'display_data':
                 # "Rich output like images, plots, etc. (e.g. from matplotlib, IPython.display)"
                 logging.info(f'Rich display: {str(msg)}')
 
             elif msg_type == 'stream':
-                output['output'] = msg['content']['text']
+                content = msg['content']
+                output['result'] = content
                 output['type'] = msg_type
-                logging.info(f"STDOUT: {msg['content']['text']}")
+                output['text'] = '\n'.join([ output['text'], content['text'] ]).strip()
 
             elif msg_type == 'error':
                 content = msg['content']
 
                 output['status'] = 'error'
-                output['output'] = {
+                output['result'] = {
                     'ename': content['ename'],
                     'evalue': content['evalue'],
                     'traceback': clean_traceback(content['traceback']),
@@ -121,20 +122,3 @@ class Kernel:
 
                 tb = '\n'.join(content['traceback'])
                 logging.error(f"{content['ename']} {content['evalue']}\n{tb}")
-
-
-class KernelManager:
-    def __init__(self) -> None:
-        self.kernels = {}
-
-    def get(self, id_data: dict) -> Kernel:
-        kid = f"{id_data['pid']}_{id_data['buffer']}"
-
-        if kid not in self.kernels:
-            self.kernels[kid] = Kernel(id_data)
-
-        return self.kernels[kid]
-
-    def shutdown_all(self) -> None:
-        for kn in self.kernels.values():
-            kn.shutdown()

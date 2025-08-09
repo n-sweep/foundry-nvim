@@ -2,37 +2,43 @@ local Logging = require('foundry.logging')
 local logger = Logging:get_logger('foundry_logger')
 
 local M = {
-    handles = {},
-    plugin_root = nil,  -- set at runtime by foundry.init.setup()
+    handle = 0,
+    on_result = function(_) logger:warn("Result handler not set") end
 }
 
 
-function M.on_result(result)
-    -- set at runtime by foundry.init.setup()
-    logger:warn("Result handler not set")
+function M.setup(cell_handler, plugin_root)
+    M.on_result = cell_handler.handle_ipy_message
+    M.plugin_root = plugin_root
+
+    return M
 end
 
 
-function M.set_result_handler(func)
-    M.on_result = func
-end
+-- local functions -------------------------------------------------------------
 
 
-local function send_to_subprocess(tbl)
+local function send_to_subprocess(tbl, bufn)
 
-    local buf = vim.api.nvim_get_current_buf()
-    logger:info(vim.inspect(M.handles))
+    if M.handle < 1 then
+        return
+    end
+
+    -- when a shutdown signal is sent from within an autocommand such as BufDelete,
+    -- buffer 0 will not correctly represent the ipynb file that was closed.
+    -- in this situation, we will pass it in explicitly
+    bufn = bufn or vim.api.nvim_get_current_buf()
 
     -- add identifying information about vim
-    tbl['id'] = {
+    tbl['meta'] = {
         pid = vim.fn.getpid(),
-        buffer = buf,
+        buf = bufn,
         file = vim.api.nvim_buf_get_name(0),
     }
 
     local json = vim.fn.json_encode(tbl)
 
-    vim.fn.chansend(M.handles[buf], json .. '\n')
+    vim.fn.chansend(M.handle, json .. '\n')
 end
 
 
@@ -56,26 +62,27 @@ end
 
 
 local function on_exit(_, code, _)
-    local buf = vim.api.nvim_get_current_buf()
-    local handle = M.handles[buf]
 
-    if handle then
-        vim.fn.jobstop(handle)
-        handle = 0
+    if M.handle > 0 then
+        vim.fn.jobstop(M.handle)
+        M.handle = 0
         logger:info('subprocess exited')
     end
 end
 
 
+-- Module functions ------------------------------------------------------------
+
+
 function M.start()
-
-    local buf = vim.api.nvim_get_current_buf()
-    local handle = M.handles[buf]
-
-    if (handle == nil) or (handle < 1) then
-
-        handle = vim.fn.jobstart(
-            { 'python3', '-u', M.plugin_root .. '/python/main.py', vim.fn.stdpath('state') },
+    if M.handle < 1 then
+        M.handle = vim.fn.jobstart(
+            {
+                'python3', '-u',
+                M.plugin_root .. '/python/main.py',
+                vim.fn.getpid(),
+                vim.fn.stdpath('state')  -- log file location
+            },
             {
                 on_stdout = on_stdout,
                 on_stderr = on_stderr,
@@ -83,24 +90,30 @@ function M.start()
             }
         )
 
-        M.handles[buf] = handle
-
-        send_to_subprocess({ type = 'startup' })
-        logger:info('job started: ' .. handle)
+        logger:info('ipy bridge job started: ' .. M.handle)
     end
 end
 
 
+function M.restart_kernel(bufn)
+    send_to_subprocess({ type = 'restart' }, bufn)
+end
+
+
+function M.shutdown_kernel(bufn)
+    send_to_subprocess({ type = 'shutdown', target = 'kernel' }, bufn)
+end
+
+
 function M.stop()
-    send_to_subprocess({ type = 'shutdown' })
+    send_to_subprocess({ type = 'shutdown', target = 'all' })
+    M.handle = 0
 end
 
 
 function M.execute(input)
     local cell_id, code = input[1], input[2]
-    local buf = vim.api.nvim_get_current_buf()
-
-    if M.handles[buf] > 0 then
+    if M.handle > 0 then
         local msg = { type = 'exec', code = code, cell_id = cell_id }
         send_to_subprocess(msg)
     else

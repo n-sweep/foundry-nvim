@@ -3,12 +3,10 @@ import json
 import logging
 import traceback
 from datetime import datetime
-from kernel import KernelManager
+from kernel import Kernel
 
-if len(sys.argv) > 1:
-    logfile = f"{sys.argv[1]}/foundry-nvim-py.log"
-else:
-    logfile = './logs/foundry-nvim-py.log'
+pid = sys.argv[1]
+logfile = f"{sys.argv[2]}/foundry-nvim-py.log"
 
 logging.basicConfig(
     filename=logfile,
@@ -40,55 +38,97 @@ def handle_datetimes(inp: dict) -> dict:
     return inp
 
 
-def write_to_lua(message: dict) -> None:
-    """write a dictionary to stdout as json"""
+class KernelManager:
+    def __init__(self, pid: str) -> None:
+        self.pid = pid
+        self.kernels = {}
 
-    # datetime objects are not json serializable
-    if 'messages' in message:
-        message['messages'] = handle_datetimes(message['messages'])
+        logging.info(f'Kernel manager {pid} initialized')
 
-    sys.stdout.write(json.dumps(message) + '\n')
-    sys.stdout.flush()
+    def get(self, metadata: dict) -> Kernel:
+        fn = metadata['file']
+        if fn not in self.kernels:
+            self.kernels[fn] = Kernel(metadata)
+        return self.kernels[fn]
 
+    def shutdown_kernel(self, kn: Kernel) -> None:
+        """Shut down the provided kernel and remove it from self.kernels"""
+        kn.shutdown()
+        del self.kernels[kn.file]
+        logging.info(f"Kernel {kn.file} shut down")
 
-def main():
-    output = {}
-    kernel_mgr = KernelManager()
+    def restart_kernel(self, kn: Kernel) -> None:
+        """Restart the provided kernel"""
+        kn.shutdown()
+        self.kernels[kn.file] = Kernel(kn.metadata)
+        logging.info(f"Kernel {kn.file} restarted")
 
-    logging.info('Kernel manager initialized')
+    def shutdown_all(self) -> None:
+        """Shut down all kernels and write confirmation to stdout"""
+        for kn in self.kernels.values():
+            kn.shutdown()
+        self.kernels = {}
+        self.write({'type': 'shutdown_all', 'status': 'ok'})
+        logging.info(f'Kernel manager {self.pid} shut down')
 
-    try:
+    def write(self, message: dict) -> None:
+        """write a dictionary to stdout as json"""
+
+        # datetime objects are not json serializable
+        if 'messages' in message:
+            message['messages'] = handle_datetimes(message['messages'])
+
+        sys.stdout.write(json.dumps(message) + '\n')
+        sys.stdout.flush()
+
+    def handle_kernel_message(self, message: dict) -> None:
+        """Handle kernel-specific messages"""
+        kn = self.get(message['meta'])
+        output = {}
+
+        if message['type'] == 'exec':
+
+            output = {
+                'cell_id': message['cell_id'],
+                **kn.execute(message['code'])
+            }
+
+            self.write(output)
+
+        elif message['type'] == 'restart':
+            self.restart_kernel(kn)
+
+        elif message['type'] == 'shutdown':
+            self.shutdown_kernel(kn)
+
+    def read(self) -> None:
+        """Read messages from stdin"""
         while True:
             # read requests from lua
             req = json.loads(sys.stdin.readline())
             if req is None:
-                logging.error('Something is wrong! `req` is None')
-                break
+                continue
 
-            kn = kernel_mgr.get(req['id'])
-
-            if req['type'] == 'exec':
-
-                output = {
-                    'cell_id': req['cell_id'],
-                    **kn.execute(req['code'])
-                }
-
-                write_to_lua(output)
-
-            elif req['type'] == 'shutdown':
+            elif req['type'] == 'shutdown' and req['target'] == 'all':
                 logging.info('Shutdown received from nvim')
-
-                kn.shutdown()
-
-            elif req['type'] == 'shutdown_all':
                 break
 
+            elif not req['meta'].get('file'):
+                logging.warning('`file` is missing?')
+                logging.warning(req)
+                continue
+
+            self.handle_kernel_message(req)
+
+
+def main():
+    km = KernelManager(pid)
+    try:
+        km.read()
     except Exception:
         logging.error(traceback.format_exc())
-
     finally:
-        kernel_mgr.shutdown_all()
+        km.shutdown_all()
 
 
 if __name__ == "__main__":
