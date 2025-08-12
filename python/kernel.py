@@ -98,7 +98,7 @@ class Kernel:
                 output['result'] = content
                 output['type'] = msg_type
 
-                output['text'] = '\n'.join([ output['text'], content['data']['text/plain'] ]).strip()
+                output['text'] = '\n'.join([ output['text'], content['data']['text/plain'] ]).strip('\n')
 
             elif msg_type == 'display_data':
                 # "Rich output like images, plots, etc. (e.g. from matplotlib, IPython.display)"
@@ -108,7 +108,7 @@ class Kernel:
                 content = msg['content']
                 output['result'] = content
                 output['type'] = msg_type
-                output['text'] = '\n'.join([ output['text'], content['text'] ]).strip()
+                output['text'] = '\n'.join([ output['text'], content['text'] ]).strip('\n')
 
             elif msg_type == 'error':
                 content = msg['content']
