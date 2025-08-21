@@ -161,21 +161,26 @@ function M.open_cell_floating_window()
     local _, row = cell:get_pos()
     local lines = cell.output_lines
 
+    if #lines == 0 then
+        return
+    end
+
     vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
 
     vim.api.nvim_open_win(buf, true, {
-        relative = 'editor',
+        relative = 'win',
+        bufpos = { row - 1, 0 },
         width = vim.api.nvim_win_get_width(0),
-        height = math.max(#lines, vim.api.nvim_win_get_height(0) / 2),
-        row = row,
-        col = 0,
+        height = math.min(#lines, math.ceil(vim.api.nvim_win_get_height(0) / 2)),
         border = M.opts.border,
         title = ' ' .. out_header .. ' '
     })
 
     local opts = { noremap = true, silent = true }
-    vim.api.nvim_buf_set_keymap(buf, 'n', '<Esc>', '<cmd>bd!<CR>', opts)
-    vim.api.nvim_buf_set_keymap(buf, 'n', 'q', '<cmd>bd!<CR>', opts)
+    for _, mode in ipairs({'n', 'v'}) do
+        vim.api.nvim_buf_set_keymap(buf, mode, '<Esc>', '<cmd>bd!<CR>', opts)
+        vim.api.nvim_buf_set_keymap(buf, mode, 'q', '<cmd>bd!<CR>', opts)
+    end
 end
 
 

@@ -12,7 +12,9 @@ The goal is to create a plugin that executes cell contents asynchronously and di
 
 ### TODO
 
-- [ ] cells with both stream and execution output overwrite the output before completion
+- [ ] goto next/previous error when wrapping at end/beginning of buffer
+
+### backlog
 - [ ] create a cell w/o executing
 - [ ] execute skip empty cells
 
@@ -38,3 +40,5 @@ The goal is to create a plugin that executes cell contents asynchronously and di
 - [x] execute skip markdown cells
 - [x] truncate virtual text output
 - [x] shutdown / restart kernels
+- [x] error when trying to open cell with no output
+- [x] cells with both stream and execution output overwrite the output before completion

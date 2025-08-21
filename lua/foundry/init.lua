@@ -18,7 +18,7 @@ function M.setup(opts)
     Logging:new(vim.fn.stdpath('state') .. '/foundry-nvim-lua.log', 'foundry_logger')
 
     local ch = require('foundry.cell_handler').setup(plugin_dir, {
-        display_max_lines = 10,
+        display_max_lines = 16,
         border = 'rounded'
     })
 
