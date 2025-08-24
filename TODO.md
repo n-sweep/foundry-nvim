@@ -3,6 +3,9 @@
 - [ ] goto next/previous error when wrapping at end/beginning of buffer
 
 ## backlog
+
+- [ ] separate system logging from kernel-specific logging
+    - [ ] send the latter to a temp file instead
 - [ ] create a cell w/o executing
 - [ ] execute skip empty cells
 
