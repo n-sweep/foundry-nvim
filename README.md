@@ -1,6 +1,6 @@
 # Foundry
 
-    WARNING: this plugin is under active development and is not intended for use by anyone
+> WARNING: this plugin is under active development and is not intended for use by anyone
 
 - Inspired by [`molten-nvim`](https://github.com/benlubas/molten-nvim) and its predecessors
 - Intended to interact with jupyter notebooks opened with [jupytext.nvim](https://github.com/GCBallesteros/jupytext.nvim) in neovim
