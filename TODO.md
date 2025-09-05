@@ -1,9 +1,13 @@
 # TODO
 
 - [ ] goto next/previous error when wrapping at end/beginning of buffer
+- [ ] when we get the `ValueError: Mime type rendering requires nbformat>=4.2.0 but it is not installed` error, the traceback is somehow not making it back to the lua side of the fence
+    - to reproduce, make a figure and then execute a cell with just the figure (no `.show()`)
 
 ## backlog
 
+- [ ] highlight cell output
+    - connect the input line to the output along the left column maybe?
 - [ ] separate system logging from kernel-specific logging
     - [ ] send the latter to a temp file instead
 - [ ] create a cell w/o executing
