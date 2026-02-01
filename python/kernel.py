@@ -34,8 +34,10 @@ class Kernel:
         The Jupyter kernel manager instance.
     client : KernelClient
         The Jupyter kernel client for communication.
+    info : dict
+        Kernel info reply containing banner, language info, etc.
     status : str
-        Current kernel status ('idle' or 'down').
+        Current kernel status.
     """
 
     def __init__(self, metadata: dict) -> None:
@@ -43,6 +45,7 @@ class Kernel:
         self.vim_pid = metadata["pid"]
         self.file = metadata["file"]
         self.execution_count = 0
+        self.status = "idle"
 
         self.mgr = KM()
         self.mgr.start_kernel()
@@ -51,9 +54,26 @@ class Kernel:
         self.client.start_channels()
         self.client.wait_for_ready()
 
-        self.status = "idle"
+        logging.info("Kernel Ready")
 
-        logging.info(f"Kernel ready: {self.file} ({self.vim_pid})")
+        # Get kernel info (sends a message and gets reply from shell channel)
+        _ = self.client.kernel_info()
+        self.info = self.client.get_shell_msg(timeout=5)
+
+        logging.info(self.banner)
+
+    @property
+    def banner(self) -> str:
+        output = [
+            "",
+            f"Kernel: {self.file} ({self.vim_pid})",
+            f"Execution Count: {self.execution_count}",
+            "=" * 80,
+            f"{self.info['content']['banner']}",
+            "=" * 80,
+            "",
+        ]
+        return "\n".join(output)
 
     def shutdown(self) -> None:
         """Shut down the kernel and stop all communication channels.
@@ -103,19 +123,20 @@ class Kernel:
         -------
         dict
             Dictionary containing:
-            - status : str
-                Execution status ('ok', 'error', or 'abort').
-            - execution_count : int or None
-                The execution counter from the kernel.
             - messages : list of dict
                 List of output messages in nbformat style, each with an
                 'output_type' field and a 'raw' field containing the
                 complete Jupyter message.
+            - status : str or None
+                Execution status ('ok', 'error', or 'abort'), or None if
+                shell reply was not received.
+            - execution_count : int
+                The execution counter from the kernel.
         """
-        output = {"status": "error", "execution_count": None, "messages": []}
+        output = {"messages": [], "status": None, "execution_count": 0}
 
-        # collect iopub messages until idle
         while True:
+            # collect iopub messages until idle
             try:
                 msg = self.client.get_iopub_msg(timeout=1)
             except Empty:
@@ -128,60 +149,55 @@ class Kernel:
 
             msg_type = msg["header"]["msg_type"]
             content = msg["content"]
+            logging.info(f"Message: {msg_type}")
 
             if msg_type == "status":
+                # reaching idle means the process is complete and we can return the messages
                 if content["execution_state"] == "idle":
                     break
 
-            elif msg_type == "execute_input":
-                output["execution_count"] = content["execution_count"]
+            elif msg_type == "update_display_data":
+                """update_display_data messages are for updating previously
+                displayed output in place, such as progress bars"""
+                logging.debug(f"update_display_data message content: {content}")
 
-            elif msg_type == "stream":
-                data = {
-                    "output_type": "stream",
-                    "name": content["name"],
-                    "text": content["text"],
-                    "raw": msg,
-                }
+            elif msg_type.startswith("comm_"):
+                """comm messages are for bidirectional communication between
+                the kernel and frontend, ie interactive widgets like
+                ipywidgets"""
+                logging.debug(f"Comm message content: {content}")
+
+            else:  # types: [clear_output, display_data, error, execute_input, execute_result, stream]
+                data = {"output_type": msg_type, **content, "raw": msg}
+                if msg_type == "error":
+                    data["traceback"] = clean_traceback(content["traceback"])
                 output["messages"].append(data)
 
-            elif msg_type == "execute_result":
-                data = {
-                    "output_type": "execute_result",
-                    "execution_count": content["execution_count"],
-                    "data": content["data"],
-                    "metadata": content.get("metadata", {}),
-                    "raw": msg,
-                }
-                output["messages"].append(data)
-
-            elif msg_type == "display_data":
-                data = {
-                    "output_type": "display_data",
-                    "data": content["data"],
-                    "metadata": content.get("metadata", {}),
-                    "raw": msg,
-                }
-                output["messages"].append(data)
-
-            elif msg_type == "error":
-                data = {
-                    "output_type": "error",
-                    "ename": content["ename"],
-                    "evalue": content["evalue"],
-                    "traceback": clean_traceback(content["traceback"]),
-                    "raw": msg,
-                }
-                output["messages"].append(data)
+            # also watch for stdin; just logging for now
+            try:
+                msg = self.client.get_stdin_msg(timeout=0.1)
+                msg_type = msg["header"]["msg_type"]
+                content = msg["content"]
+                logging.info(f"Received stdin message: {msg_type}")
+                logging.debug(f"Stdin message content: {content}")
+            except Empty:
+                continue
 
         # get the execute_reply from shell channel
-        shell_reply = self.client.get_shell_msg(timeout=5)
-
-        if shell_reply["parent_header"].get("msg_id") == msg_id:
-            reply_content = shell_reply["content"]
-            output["status"] = reply_content["status"]
-            if output["execution_count"] is None:
-                output["execution_count"] = reply_content.get("execution_count")
+        try:
+            shell_reply = self.client.get_shell_msg(timeout=5)
+            srid = shell_reply["parent_header"].get("msg_id")
+            if srid == msg_id:
+                output["status"] = shell_reply["content"]["status"]
+                ec = shell_reply["content"]["execution_count"]
+                output["execution_count"] = ec
+                self.execution_count = ec
+            else:
+                logging.error(
+                    f"Shell reply msg_id mismatch: expected {msg_id}, got {srid}"
+                )
+        except Empty:
+            logging.error(f"Timeout waiting for shell reply. msg_id: {msg_id}")
 
         return output
 
@@ -293,7 +309,6 @@ class KernelManager:
             Message containing 'type', 'meta', and other request data.
         """
         kn = self.get(message["meta"])
-        output = {}
 
         if message["type"] == "exec":
             output = {"cell_id": message["cell_id"], **kn.execute(message["code"])}

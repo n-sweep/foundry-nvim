@@ -23,6 +23,22 @@ def strip_ansi(text: str) -> str:
 
 
 def clean_traceback(tb: list) -> dict:
+    """Clean and format traceback for output.
+
+    Converts traceback list to both plain text (ANSI codes removed) and
+    ANSI-formatted versions, replacing control characters with newlines.
+
+    Parameters
+    ----------
+    tb : list
+        List of traceback strings from Jupyter error message.
+
+    Returns
+    -------
+    dict
+        Dictionary with 'text/plain' and 'text/ANSI' keys, each containing
+        a list of traceback lines.
+    """
     text = "\n".join(tb).replace("^@", "\n")
     output = {
         "text/plain": strip_ansi(str(text)).split("\n"),
@@ -31,18 +47,18 @@ def clean_traceback(tb: list) -> dict:
     return output
 
 
-def handle_datetimes(inp: dict) -> dict:
+def handle_datetimes(messages: list) -> list:
     """Recursively convert between datetime objects and iso format strings for JSON un/serialization.
 
     Parameters
     ----------
-    inp : dict
-        Dictionary potentially containing datetime objects
+    messages : list
+        List of message dictionaries potentially containing datetime objects
 
     Returns
     -------
-    dict
-        Dictionary with datetime objects converted to/from ISO format strings
+    list
+        List of message dictionaries with datetime objects converted to/from ISO format strings
     """
 
     def rfunc(inp: dict) -> dict:
@@ -56,8 +72,4 @@ def handle_datetimes(inp: dict) -> dict:
                 inp[key] = rfunc(val)
         return inp
 
-    for key, messages in inp.items():
-        for msg in messages:
-            inp[key] = rfunc(msg)
-
-    return inp
+    return [rfunc(msg) for msg in messages]
