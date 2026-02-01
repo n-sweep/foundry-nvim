@@ -1,58 +1,47 @@
-import re
+import json
 import logging
-from time import sleep
+import sys
+
+from jupyter_client.manager import KernelManager as KM
 from queue import Empty
-from jupyter_client.manager import KernelManager
+from time import sleep
 
-ansi_escape = re.compile(r'\x1b\[[0-9;]+m')  # ]]
-
-
-def strip_ansi(text: str) -> str:
-    return ansi_escape.sub('', text).strip()
-
-
-def clean_traceback(tb: list) -> dict:
-    text = '\n'.join(tb).replace('^@', '\n')
-    output = {
-        'text/plain': strip_ansi(str(text)).split('\n'),
-        'text/ANSI': text.split('\n'),
-    }
-    return output
+from utils import clean_traceback, handle_datetimes
 
 
 class Kernel:
     def __init__(self, metadata: dict) -> None:
         self.metadata = metadata
-        self.vim_pid = metadata['pid']
-        self.file = metadata['file']
+        self.vim_pid = metadata["pid"]
+        self.file = metadata["file"]
         self.execution_count = 0
 
-        self.manager = KernelManager()
-        self.manager.start_kernel()
+        self.mgr = KM()
+        self.mgr.start_kernel()
 
-        self.client = self.manager.client()
+        self.client = self.mgr.client()
         self.client.start_channels()
         self.client.wait_for_ready()
 
-        self.status = 'idle'
+        self.status = "idle"
 
-        logging.info(f'Kernel ready: {self.file} ({self.vim_pid})')
+        logging.info(f"Kernel ready: {self.file} ({self.vim_pid})")
 
     def shutdown(self) -> None:
-        if self.status == 'down':
+        if self.status == "down":
             return
 
-        logging.info(f'Shutting down kernel {self.file} ({self.vim_pid})')
+        logging.info(f"Shutting down kernel {self.file} ({self.vim_pid})")
 
-        self.status = 'down'
+        self.status = "down"
         self.client.stop_channels()
-        self.manager.shutdown_kernel()
+        self.mgr.shutdown_kernel()
 
     def execute(self, *args, **kwargs) -> dict:
-        self.client.execute(*args, **kwargs)
-        return self._retrieve_messages()
+        msg_id = self.client.execute(*args, **kwargs)
+        return self._retrieve_messages(msg_id)
 
-    def _retrieve_messages(self) -> dict:
+    def _retrieve_messages(self, msg_id: str) -> dict:
         output = {
             'status': 'ok',
             'messages': {},
@@ -63,6 +52,8 @@ class Kernel:
 
             try:
                 msg = self.client.get_iopub_msg(timeout=1)
+                if msg['parent_header'].get('msg_id') != msg_id:
+                    continue
             except Empty:
                 sleep(0.25)
                 continue
@@ -122,3 +113,75 @@ class Kernel:
 
                 tb = '\n'.join(content['traceback'])
                 logging.error(f"{content['ename']} {content['evalue']}\n{tb}")
+
+
+class KernelManager:
+    def __init__(self, pid: str) -> None:
+        self.pid = pid
+        self.kernels = {}
+
+        logging.info(f"Kernel manager {pid} initialized")
+
+    def get(self, metadata: dict) -> Kernel:
+        fn = metadata["file"]
+        if fn not in self.kernels:
+            self.kernels[fn] = Kernel(metadata)
+        return self.kernels[fn]
+
+    def shutdown_kernel(self, kn: Kernel) -> None:
+        kn.shutdown()
+        del self.kernels[kn.file]
+        logging.info(f"Kernel {kn.file} shut down")
+
+    def restart_kernel(self, kn: Kernel) -> None:
+        kn.shutdown()
+        self.kernels[kn.file] = Kernel(kn.metadata)
+        logging.info(f"Kernel {kn.file} restarted")
+
+    def shutdown_all(self) -> None:
+        for kn in self.kernels.values():
+            kn.shutdown()
+        self.kernels = {}
+        self.write({"type": "shutdown_all", "status": "ok"})
+        logging.info(f"Kernel manager {self.pid} shut down")
+
+    def write(self, message: dict) -> None:
+        # datetime objects are not json serializable
+        if "messages" in message:
+            message["messages"] = handle_datetimes(message["messages"])
+
+        sys.stdout.write(json.dumps(message) + "\n")
+        sys.stdout.flush()
+
+    def handle_kernel_message(self, message: dict) -> None:
+        kn = self.get(message["meta"])
+        output = {}
+
+        if message["type"] == "exec":
+            output = {"cell_id": message["cell_id"], **kn.execute(message["code"])}
+
+            self.write(output)
+
+        elif message["type"] == "restart":
+            self.restart_kernel(kn)
+
+        elif message["type"] == "shutdown":
+            self.shutdown_kernel(kn)
+
+    def read(self) -> None:
+        while True:
+            # read requests from lua
+            req = json.loads(sys.stdin.readline())
+            if req is None:
+                continue
+
+            elif req["type"] == "shutdown" and req["target"] == "all":
+                logging.info("Shutdown received from nvim")
+                break
+
+            elif not req["meta"].get("file"):
+                logging.warning("`file` is missing?")
+                logging.warning(req)
+                continue
+
+            self.handle_kernel_message(req)
