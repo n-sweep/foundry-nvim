@@ -3,6 +3,8 @@
 ## Build & Test Commands
 - `uv sync` - Install/sync Python dependencies  
 - `nix develop` - Enter development shell with all dependencies
+- `nix develop -c pytest tests/python/` - Run tests from outside dev shell
+- **IMPORTANT**: Do NOT run tests or make changes unless explicitly asked by the user
 
 ## Code Style Guidelines
 
