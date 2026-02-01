@@ -11,4 +11,13 @@ dependencies = [
     "plotly>=6.2.0",
     "pynvim>=0.5.2",
     "pyperclip>=1.9.0",
+    "pytest>=9.0.2",
 ]
+
+[tool.pytest.ini_options]
+filterwarnings = [
+    "ignore::DeprecationWarning:jupyter_client.*"
+]
+log_cli = true
+log_cli_level = "INFO"
+pythonpath = ["."]
