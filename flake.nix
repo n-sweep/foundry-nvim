@@ -85,7 +85,12 @@
   {
     devShells.x86_64-linux.default = pkgs.mkShell {
 
-      packages = [ pkgs.uv venv ];
+      packages = [
+        pkgs.lua-language-server
+        pkgs.luajitPackages.vusted
+        pkgs.uv
+        venv
+      ];
 
       env = {
         UV_NO_SYNC = "1";
