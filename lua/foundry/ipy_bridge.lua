@@ -33,7 +33,7 @@ local function send_to_subprocess(tbl, bufn)
     tbl['meta'] = {
         pid = vim.fn.getpid(),
         buf = bufn,
-        file = vim.api.nvim_buf_get_name(0),
+        file = vim.api.nvim_buf_get_name(bufn),
     }
 
     local json = vim.fn.json_encode(tbl)
@@ -42,6 +42,8 @@ local function send_to_subprocess(tbl, bufn)
 end
 
 
+--- Callback for subprocess stdout - parses JSON messages and routes to result handler
+--- @param data table Lines of output from subprocess
 local function on_stdout(_, data, _)
     for _, line in ipairs(data) do
         if line ~= '' then
@@ -49,24 +51,34 @@ local function on_stdout(_, data, _)
             if ok then
                 M.on_result(result)
             else
-                logger:error('failed to parse:', line)
+                logger:error('failed to parse: ' .. line)
             end
         end
     end
 end
 
 
-local function on_stderr(chan_id, data, name)
-    logger:info("ERR: " .. vim.inspect(data))
+--- Callback for subprocess stderr - logs error output
+--- @param data table Lines of error output from subprocess
+local function on_stderr(_, data, _)
+    for _, line in ipairs(data) do
+        if line ~= '' then
+            logger:error("subprocess stderr: " .. line)
+        end
+    end
 end
 
 
+--- Callback for subprocess exit - cleans up job handle
+--- @param code number Exit code from subprocess
 local function on_exit(_, code, _)
-
     if M.handle > 0 then
-        vim.fn.jobstop(M.handle)
         M.handle = 0
-        logger:info('subprocess exited')
+        if code == 0 then
+            logger:info('subprocess exited cleanly')
+        else
+            logger:error('subprocess exited with code: ' .. code)
+        end
     end
 end
 
@@ -74,9 +86,11 @@ end
 -- Module functions ------------------------------------------------------------
 
 
+--- starts a new subprocess running the python kernel manager
+--- @return boolean success boolean indicating whether the subprocess started successfully
 function M.start()
     if M.handle < 1 then
-        M.handle = vim.fn.jobstart(
+        local jobid = vim.fn.jobstart(
             {
                 'python3', '-u',
                 M.plugin_root .. '/python/main.py',
@@ -90,8 +104,15 @@ function M.start()
             }
         )
 
-        logger:info('ipy bridge job started: ' .. M.handle)
+        if jobid > 0 then
+            logger:info('ipy bridge job started: ' .. jobid)
+            M.handle = jobid
+            return true
+        end
+
+        logger:error('failed to start python subprocess: ' .. jobid)
     end
+    return false
 end
 
 

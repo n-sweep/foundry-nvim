@@ -31,8 +31,11 @@ end
 
 --- Retrieves a named logger from the registry
 --- @param name string The name of the logger to retrieve
---- @return Logging|nil logger The logger instance, or nil if not found
+--- @return Logging logger The logger instance, or nil if not found
 function Logging:get_logger(name)
+    if not Logging.named_loggers[name] then
+        Logging.named_loggers[name] = Logging:new(nil, name)
+    end
     return Logging.named_loggers[name]
 end
 
