@@ -253,7 +253,7 @@ function M.execute_cell()
     local cell = get_cell_under_cursor()
     if cell ~= nil then
         local code = cell:get_execution_input()
-        M.executor({ cell.id, code })
+        M.executor(cell.id, code)
         cell:update('Running', '*', {})
     end
 end

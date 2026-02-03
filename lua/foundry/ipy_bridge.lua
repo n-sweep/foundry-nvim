@@ -18,10 +18,16 @@ end
 -- local functions -------------------------------------------------------------
 
 
+--- Sends a JSON message to the Python subprocess
+--- Adds metadata (pid, buffer, file) to the message before encoding and sending
+--- @param tbl table The message to send (will be modified to add 'meta' field)
+--- @param bufn number|nil Buffer number for metadata (defaults to current buffer)
+--- @return boolean success Whether the message was sent successfully
 local function send_to_subprocess(tbl, bufn)
 
     if M.handle < 1 then
-        return
+        logger:error("No subprocess handle found")
+        return false
     end
 
     -- when a shutdown signal is sent from within an autocommand such as BufDelete,
@@ -37,8 +43,14 @@ local function send_to_subprocess(tbl, bufn)
     }
 
     local json = vim.fn.json_encode(tbl)
+    local result = vim.fn.chansend(M.handle, json .. '\n')
 
-    vim.fn.chansend(M.handle, json .. '\n')
+    if result < 1 then
+        logger:error("chansend failed: " .. json .. '\n')
+        return false
+    end
+
+    return true
 end
 
 
@@ -78,6 +90,12 @@ local function on_exit(_, code, _)
             logger:info('subprocess exited cleanly')
         else
             logger:error('subprocess exited with code: ' .. code)
+
+            vim.notify(
+                'Foundry: Python kernel subprocess crashed (exit code: ' .. code .. ')',
+                vim.log.levels.ERROR
+            )
+
         end
     end
 end
@@ -116,30 +134,63 @@ function M.start()
 end
 
 
+--- Restarts the kernel for the specified buffer
+--- @param bufn number|nil Buffer number (defaults to current buffer)
+--- @return boolean success Whether the restart command was sent successfully
 function M.restart_kernel(bufn)
-    send_to_subprocess({ type = 'restart' }, bufn)
+    return send_to_subprocess({ type = 'restart' }, bufn)
 end
 
 
+--- Shuts down the kernel for the specified buffer
+--- @param bufn number|nil Buffer number (defaults to current buffer)
+--- @return boolean success Whether the shutdown command was sent successfully
 function M.shutdown_kernel(bufn)
-    send_to_subprocess({ type = 'shutdown', target = 'kernel' }, bufn)
+    return send_to_subprocess({ type = 'shutdown', target = 'kernel' }, bufn)
 end
 
 
+--- Stops the entire Python subprocess and all kernels
+--- Note: M.handle will be reset to 0 by the on_exit callback when subprocess terminates
+--- @return boolean success Whether the shutdown command was sent successfully
 function M.stop()
-    send_to_subprocess({ type = 'shutdown', target = 'all' })
-    M.handle = 0
+    return send_to_subprocess({ type = 'shutdown', target = 'all' })
 end
 
 
-function M.execute(input)
-    local cell_id, code = input[1], input[2]
+--- Executes code in the Python kernel and sends results to the result handler
+--- @param cell_id number The cell identifier
+--- @param code string The Python code to execute
+function M.execute(cell_id, code)
     if M.handle > 0 then
+
         local msg = { type = 'exec', code = code, cell_id = cell_id }
-        send_to_subprocess(msg)
+        local success = send_to_subprocess(msg)
+
+        if not success then
+            -- Send failed - notify cell with error
+            M.on_result({
+                cell_id = cell_id,
+                status = 'error',
+                execution_count = 'E',
+                messages = {
+                    {output_type = 'error', text = 'Failed to send execution request'}
+                }
+            })
+        end
+
     else
-        logger:warn('ipython not running')
-        M.on_result({ type = 'execute_result', status = 'ipy_down', cell_id = cell_id })
+
+        -- Subprocess not running
+        M.on_result({
+            cell_id = cell_id,
+            status = 'error',
+            execution_count = 'E',
+            messages = {
+                {output_type = 'error', text = 'IPython subprocess not running'}
+            }
+        })
+
     end
 end
 
