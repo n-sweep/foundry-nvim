@@ -75,6 +75,8 @@ function M.setup(opts)
         callback = ch.prune_cells
     })
 
+    vim.notify('Foundry startup complete')
+
 end
 
 
