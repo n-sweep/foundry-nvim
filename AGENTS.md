@@ -1,9 +1,7 @@
 # AGENTS.md - foundry-nvim Development Guide
 
 ## Build & Test Commands
-- `uv sync` - Install/sync Python dependencies  
 - `nix develop` - Enter development shell with all dependencies
-- `nix develop -c pytest tests/python/` - Run tests from outside dev shell
 - **IMPORTANT**: Do NOT run tests or make changes unless explicitly asked by the user
 
 ## Code Style Guidelines
@@ -29,3 +27,39 @@
 - Python kernel management in python/
 - Lua Neovim interface in lua/foundry/
 - Main entry point: lua/foundry/init.lua
+
+## Current Refactor: Quarto Support
+
+### Goal
+Integrate foundry-nvim as a code runner for quarto-nvim. Previously worked with jupytext `.py` files (detecting cells via `# %%`). Now integrating with quarto-nvim. Foundry uses otter.nvim directly for cell detection in quarto files.
+
+Priority: Quarto integration. Retain jupytext support where practical.
+
+### Message Format Change
+Python kernel now emits standard Jupyter IOPub message format:
+```lua
+{
+    cell_id = 1,
+    status = "ok" | "error",
+    execution_count = N,
+    messages = {
+        { output_type = "stream", name = "stdout", text = "..." },
+        { output_type = "execute_result", data = { ["text/plain"] = "..." } },
+        { output_type = "error", ename = "...", evalue = "...", traceback = { ["text/plain"] = {...} } }
+    }
+}
+```
+
+### Cell Delimiters by Filetype
+- `.py` (jupytext): `# %%`
+- `.qmd` (Quarto): `` ```{python} `` / `` ``` ``
+
+### Testing Approach
+- Unit tests only where valuable and decoupled from Neovim APIs
+- `cell_handler_spec.lua` tests message parsing (mocks Cell and ipy_bridge)
+- `cell.lua` has no unit tests—too tightly coupled to Neovim, logic is trivial
+
+### Files Requiring Changes
+- `cell_handler.lua`: message parsing, filetype-aware delimiter detection
+- `cell.lua`: `is_valid()` needs filetype-aware delimiter check
+- `init.lua`: detect filetype, pass to cell_handler via opts
