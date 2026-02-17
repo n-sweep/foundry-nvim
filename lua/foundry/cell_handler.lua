@@ -5,57 +5,50 @@ local Cell = require('foundry.cell')
 local bridge = require('foundry.ipy_bridge')
 
 local M = {
-    delimiter = '# %%',
     ns = vim.api.nvim_create_namespace('foundry-nvim'),
+    keeper = require("otter.keeper"),
     cells = {},
-    executor = function() logger:warn('cell executor not set') end
+    executor = function() logger:warn('cell executor not set') end,
+    supported_langs = { python = true }
 }
 
 
 -- local functions -------------------------------------------------------------
 
 
-local function get_next_cell_separator()
-    return vim.fn.search(M.delimiter, 'nW')
-end
-
-
-local function get_current_cell_separator()
-    -- find cell divider above cursor
-    local line = vim.fn.getline(".")
-    if line:find(M.delimiter) and not line:find('markdown') then
-        return vim.api.nvim_win_get_cursor(0)[1]
-    else
-        return vim.fn.search(M.delimiter, 'nbW')
+--- Extract all code chunks from the current buffer using otter.keeper.
+--- @return table[] chunks Array of chunk objects with range and lang fields
+local function get_chunks()
+    local bn = vim.api.nvim_get_current_buf()
+    local all_chunks = M.keeper.extract_code_chunks(bn)
+    local output = {}
+    for _, chunks in pairs(all_chunks) do
+        for _, chunk in ipairs(chunks) do
+            table.insert(output, chunk)
+        end
     end
+    return output
 end
 
 
-local function get_prev_cell_separator()
-    -- move to the start of the current cell then search backward for the previous
-    local current_pos = vim.api.nvim_win_get_cursor(0)
-    vim.api.nvim_win_set_cursor(0, {get_current_cell_separator(), 0})
-    local prev_cell_line = vim.fn.search(M.delimiter, 'nbW')
-    vim.api.nvim_win_set_cursor(0, current_pos)
-    return prev_cell_line
-end
-
-
-local function create_cell(cstart, cend)
-    -- create a new cell defined by extmarks
-    local cell = Cell:new(cstart, cend, M.ns, M.opts)
+--- Create a new Cell object and register it in M.cells.
+--- @param cstart number Starting line of the code block (1-indexed)
+--- @param cend number Ending line of the code block (1-indexed)
+--- @param lang string Language of the code block (e.g., 'python', 'r', 'bash')
+--- @return Cell cell The newly created cell
+local function create_cell(cstart, cend, lang)
+    local cell = Cell:new(cstart, cend, lang, M.ns, M.opts)
     logger:info('New cell created: ' .. cell.id)
     M.cells[cell.id] = cell
     return cell
 end
 
 
-local function get_extmark_under_cursor()
-    -- look for an extmark under the cursor position
-
-    local row = get_current_cell_separator()
+--- Find the extmark ID that spans the given row position.
+--- @param row number Row position (1-indexed) to check
+--- @return number id Extmark ID if found, 0 otherwise
+local function get_extmark_under_cursor(row)
     local extmarks = vim.api.nvim_buf_get_extmarks(0, M.ns, 0, -1, { details = true })
-
     for _, extmark in ipairs(extmarks) do
         local id, start_row, details = extmark[1], extmark[2], extmark[4]
         if details and details.end_row then
@@ -69,86 +62,145 @@ local function get_extmark_under_cursor()
 end
 
 
-local function get_cell_under_cursor()
-    -- get the extmark id of the cell under the cursor
-
-    local cell_id = get_extmark_under_cursor()
-
-    if cell_id > 0 then
-        return M.cells[cell_id]
+--- Find the Quarto code chunk that contains the given row position.
+--- @param row number Row position (1-indexed) to check
+--- @return table|nil chunk Chunk object with range and lang fields, or nil if not found
+local function get_quarto_chunk_under_cursor(row)
+    local chunks = get_chunks()
+    for _, chunk in ipairs(chunks) do
+        local start_row = chunk.range.from[1]
+        local end_row = chunk.range.to[1]
+        if row >= start_row and row <= end_row then
+            return chunk
+        end
     end
 
-    -- get start of current and next cells
-
-    -- if cstart is zero, no active cell and no valid cell pattern were found under the cursor
-    local cstart = get_current_cell_separator()
-
-    if cstart < 1 then
-        return  -- skip when no cell found
-    elseif cstart - get_next_cell_separator() == 1 then
-        logger:info('>>>> ' .. cstart)
-        logger:info('>>>> ' .. get_next_cell_separator())
-        return  -- skip when cell is empty
-    elseif string.find(vim.fn.getline(cstart), 'markdown') ~= nil then
-        return  -- skip when markdown cell found
-    end
-
-    -- if cend is zero (last cell), replace with the end of the buffer
-    local cend = get_next_cell_separator() - 1
-    if cend < 1 then
-        cend = vim.fn.line("$")
-    end
-
-    return create_cell(cstart, cend)
+    return nil
 end
 
 
-local function handle_execution_result(msg)
-    -- handle results from ipython based on status
+--- Get or create a cell at the current cursor position.
+--- First checks for existing cell extmark, then checks for Quarto chunk.
+--- Creates a new cell if a chunk is found but no cell exists yet.
+--- @return Cell|nil cell The cell at cursor position, or nil if none found
+local function get_cell_under_cursor()
+    local row = vim.api.nvim_win_get_cursor(0)[1]
+    local cell_id = get_extmark_under_cursor(row)
 
+    if cell_id > 0 then
+        logger:info('cell found: ' .. cell_id)
+        return M.cells[cell_id]
+    end
+
+    -- if no extmark found, look for a quarto chunk
+    local chunk = get_quarto_chunk_under_cursor(row)
+    if chunk ~= nil then
+        logger:info('new cell created')
+        return create_cell(chunk.range.from[1], chunk.range.to[1], chunk.lang)
+    end
+
+    vim.notify("No cell found at row " .. row)
+    return nil
+end
+
+
+--- Handle execution results from the Python kernel.
+--- Parses Jupyter IOPub message format and updates the cell display.
+--- @param msg table { cell_id: number, status: "ok"|"error", execution_count: number, messages: table[] }
+---   messages[]: { output_type: "stream"|"execute_result"|"error", ... }
+local function handle_execution_result(msg)
     local cell = M.cells[msg.cell_id]
     local exc = msg.execution_count
     local content = {}
-    local status
+    local status = 'Done'
 
-    if msg.status == 'ok' and msg.type then
-        status = 'Done'
-        if msg.type == 'empty' then
-            logger:info('emtpy')
-        else  -- 'execution_result' and 'stream' types contain text to display
-            content = vim.split(msg.text, '\n', { trimempty = true })
+    if msg.status == 'error' then
+        status = 'Error'
+        exc = 'E'
+    end
+
+    for _, m in ipairs(msg.messages or {}) do
+        local lines = {}
+
+        if m.output_type == 'stream' then
+            lines = vim.split(m.text, '\n', { trimempty = true })
+        elseif m.output_type == 'execute_result' then
+            local text = m.data and m.data['text/plain'] or ''
+            lines = vim.split(text, '\n', { trimempty = true })
+        elseif m.output_type == 'error' then
+            lines = m.traceback and m.traceback['text/plain'] or {}
+            logger:error('ipython error reported')
         end
 
-    elseif msg.status == 'error' then
-        status = 'Error'
-        content = msg.result.traceback['text/plain']
-        exc = 'E'
-        logger:error('ipython error reported')
-
-    elseif msg.status == 'ipy_down' then
-        status = 'Error'
-        content = { 'IPython Down' }
-        exc = '...'
-
+        for _, line in ipairs(lines) do
+            table.insert(content, line)
+        end
     end
 
     cell:update(status, exc, content)
 end
 
 
+--- Navigate to the next or previous cell, wrapping at document boundaries.
+--- @param dir number Direction: 1 for next, -1 for previous
+local function goto_cell(dir)
+    local row = vim.api.nvim_win_get_cursor(0)[1] - 1
+    local destination = nil
+    local min_distance = math.huge
+    local min_row = math.huge
+    local max_row = -math.huge
+
+    if #M.cells < 1 then
+        print('No cells found in this document')
+        return
+    end
+
+    for _, cell in pairs(M.cells) do
+        local cell_row = cell:get_pos()
+        local is_valid = (
+            dir == 1 and cell_row > row
+        ) or (
+            dir == -1 and cell_row < row
+        )
+
+        min_row = math.min(min_row, cell_row)
+        max_row = math.max(max_row, cell_row)
+
+        if is_valid then
+            local distance = math.abs(cell_row - row)
+            if distance < min_distance then
+                min_distance = distance
+                destination = cell_row
+            end
+        end
+    end
+
+    -- wrap if at the beginning/end of the page
+    if not destination then
+        destination = dir == 1 and min_row or max_row
+    end
+
+    vim.api.nvim_win_set_cursor(0, {destination + 1, 0})
+end
+
+
 -- Module functions ------------------------------------------------------------
 
 
+--- Navigate to the next cell, wrapping to the first cell if at the end.
 function M.goto_next_cell()
-    vim.api.nvim_win_set_cursor(0, {get_next_cell_separator(), 0})
+    goto_cell(1)
 end
 
 
+--- Navigate to the previous cell, wrapping to the last cell if at the beginning.
 function M.goto_prev_cell()
-    vim.api.nvim_win_set_cursor(0, {get_prev_cell_separator(), 0})
+    goto_cell(-1)
 end
 
 
+--- Open a floating window displaying the cell's output.
+--- Window can be closed with 'q' or '<Esc>'.
 function M.open_cell_floating_window()
     -- display the cell's output content in a floating window
     -- `q` or `<ESC>` to close the floating window
@@ -184,6 +236,8 @@ function M.open_cell_floating_window()
 end
 
 
+--- Copy the cell's output to yank registers and system clipboard.
+--- Registers: '"' (unnamed), '0' (yank), '+' (system clipboard)
 function M.yank_cell_output()
     -- add the cell's output content to yank registers & system clipboard
 
@@ -191,7 +245,7 @@ function M.yank_cell_output()
     if cell == nil then return end
 
     local output = {}
-    for i = 2, #cell.output_lines do
+    for i = 1, #cell.output_lines do
         table.insert(output, cell.output_lines[i])
     end
 
@@ -202,6 +256,8 @@ function M.yank_cell_output()
 end
 
 
+--- Copy the cell's input code to yank registers and system clipboard.
+--- Registers: '"' (unnamed), '0' (yank), '+' (system clipboard)
 function M.yank_cell_input()
     -- add the cell's input content to yank registers & system clipboard
 
@@ -214,51 +270,71 @@ function M.yank_cell_input()
 end
 
 
+--- Remove cells marked as deleted from the cells table.
+--- Used to clean up cells after deletion.
 function M.prune_cells()
+    local chunks = get_chunks()
+    local valid_pos = {}
+    for _, chunk in ipairs(chunks) do
+        local key = chunk.range.from[1] .. ":" .. chunk.range.to[1]
+        valid_pos[key] = true
+    end
+
     -- check all cells for validity and incomplete deletion
     for _, cell in pairs(M.cells) do
-
-        -- cells that are no longer valid should have their virtual text cleared
-        if not cell:is_valid() then
-            cell:delete()
-        end
-
-        -- cells marked as deleted should be removed from history
         if cell.status == 'deleted' then
             M.cells[cell.id] = nil
-        end
+        else
+            -- convert from 0-indexed (neovim) to 1-indexed (lua) for comparison
+            local start_row, end_row = cell:get_pos()
+            local key = (start_row + 1) .. ":" .. (end_row + 1)
 
+            if not valid_pos[key] then
+                cell:delete()
+                M.cells[cell.id] = nil
+            end
+        end
     end
 end
 
 
+--- Delete the cell under the cursor and remove it from the cells table.
 function M.delete_cell_under_cursor()
     local cell = get_cell_under_cursor()
     if cell ~= nil then
         cell:delete()
+        logger:info("cell deleted: " .. cell.id)
         M.cells[cell.id] = nil
     end
 end
 
 
+--- Delete all cells and remove them from the cells table.
 function M.delete_all_cells()
     for _, cell in pairs(M.cells) do
         cell:delete()
+        logger:info("cell deleted: " .. cell.id)
         M.cells[cell.id] = nil
     end
 end
 
 
+--- Execute the cell under the cursor via the IPython kernel.
+--- Updates cell status to 'Running' until execution completes.
 function M.execute_cell()
     local cell = get_cell_under_cursor()
-    if cell ~= nil then
+    if cell and M.supported_langs[cell.language] then
         local code = cell:get_execution_input()
+        logger:info(code)
         M.executor(cell.id, code)
         cell:update('Running', '*', {})
     end
 end
 
 
+--- Handle messages from the IPython kernel.
+--- Routes shutdown messages and execution results appropriately.
+--- @param message table Message from IPython kernel with type and payload
 function M.handle_ipy_message(message)
 
     if message.type == 'shutdown_all' then
@@ -271,31 +347,46 @@ function M.handle_ipy_message(message)
 end
 
 
+--- Initialize the cell handler module.
+--- Starts IPython kernel and creates cells for all code chunks in buffer.
+--- @param plugin_root string Root directory of the plugin
+--- @param opts table Configuration options
+--- @return table M The module table
 function M.setup(plugin_root, opts)
 
     M.opts = opts
     M.executor = bridge.execute
-    bridge.setup(M, plugin_root)
 
     -- start the ipython kernel server
+    bridge.setup(M, plugin_root)
     bridge.start()
+
+    -- create cells
+    local chunks = get_chunks()
+    for _, chunk in ipairs(chunks) do
+        create_cell(chunk.range.from[1], chunk.range.to[1], chunk.lang)
+    end
 
     return M
 end
 
 
+--- Restart the IPython kernel and clear all cells.
 function M.restart_kernel()
     M.delete_all_cells()
     bridge.restart_kernel()
 end
 
 
+--- Shut down the IPython kernel for a specific buffer.
+--- @param bufn number Buffer number
 function M.shutdown_kernel(bufn)
     M.delete_all_cells()
     bridge.shutdown_kernel(bufn)
 end
 
 
+--- Shut down the entire IPython server and clear all cells.
 function M.shutdown_ipython()
     M.delete_all_cells()
     bridge.stop()

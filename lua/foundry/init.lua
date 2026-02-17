@@ -1,6 +1,9 @@
 local M = {}
 
 
+--- Initialize the foundry-nvim plugin.
+--- Sets up logging, cell handler, keymaps, and autocommands.
+--- @param opts table|nil Configuration options (currently unused)
 function M.setup(opts)
 
     -- enable requiring from local directory
@@ -39,22 +42,21 @@ function M.setup(opts)
 
     -- usercommands ----------------------------------------------------------------
 
-    vim.api.nvim_create_user_command("FoundryExecute", M.execute_cell, {})
-    vim.api.nvim_create_user_command("FoundryOpenCell", M.open_cell, {})
-
-    vim.api.nvim_create_user_command("FoundryDelete", M.delete_cell, {})
-    vim.api.nvim_create_user_command("FoundryDeleteAll", M.delete_all_cells, {})
-
-    vim.api.nvim_create_user_command("FoundryYankCellOutput", M.yank_cell_output, {})
-    vim.api.nvim_create_user_command("FoundryYankCellInput", M.yank_cell_input, {})
-
-    vim.api.nvim_create_user_command("FoundryRestart", M.restart_kernel, {})
+    vim.api.nvim_create_user_command( "FoundryDeleteAll", M.delete_all_cells,   {} )
+    vim.api.nvim_create_user_command( "FoundryDelete",    M.delete_cell,        {} )
+    vim.api.nvim_create_user_command( "FoundryExecute",   M.execute_cell,       {} )
+    vim.api.nvim_create_user_command( "FoundryNextCell",  M.goto_next_cell,     {} )
+    vim.api.nvim_create_user_command( "FoundryOpenCell",  M.open_cell,          {} )
+    vim.api.nvim_create_user_command( "FoundryPrevCell",  M.goto_prev_cell,     {} )
+    vim.api.nvim_create_user_command( "FoundryRestart",   M.restart_kernel,     {} )
+    vim.api.nvim_create_user_command( "FoundryYankIn",    M.yank_cell_input,    {} )
+    vim.api.nvim_create_user_command( "FoundryYankOut",   M.yank_cell_output,   {} )
 
 
     -- autocommands ----------------------------------------------------------------
 
     -- shut down kernel if buffer exits
-    vim.api.nvim_create_autocmd('BufUnload', {
+    vim.api.nvim_create_autocmd('BufDelete', {
         buffer = 0,
         -- buffer must be passed in manually
         callback = function(args) ch.shutdown_kernel(args.buf) end
@@ -74,6 +76,14 @@ function M.setup(opts)
         buffer = 0,
         callback = ch.prune_cells
     })
+
+    -- hl groups -------------------------------------------------------------------
+
+    -- create a highlight group to match quarto's
+    local chl = vim.api.nvim_get_hl(0, {name = 'Comment'})
+    chl.bg = vim.api.nvim_get_hl(0, {name = 'RCodeBlock'}).bg
+    vim.api.nvim_set_hl(0, "FoundryCellHL", chl)
+
 
     vim.notify('Foundry startup complete')
 

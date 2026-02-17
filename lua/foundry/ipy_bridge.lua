@@ -7,6 +7,10 @@ local M = {
 }
 
 
+--- Initialize the IPython bridge with result handler and plugin path.
+--- @param cell_handler table Cell handler module with handle_ipy_message function
+--- @param plugin_root string Root directory of the plugin
+--- @return table M The module table
 function M.setup(cell_handler, plugin_root)
     M.on_result = cell_handler.handle_ipy_message
     M.plugin_root = plugin_root

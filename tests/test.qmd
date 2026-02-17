@@ -1,5 +1,46 @@
 # This is a test
 
-```py
+hello
+
+```{python}
 print('hello world')
+print(1 + 2)
+print('goodbye friend')
+
+```
+
+```{python}
+print('hello world')
+print(1 + 2)
+print('goodbye friend')
+```
+
+```{sql}
+SELECT * FROM hello
+```
+
+```{lua}
+{
+  lang = "python",
+  leading_offset = 0,
+  range = {
+    from = { 5, 0 },
+    to = { 8, 0 }
+  },
+  text = { "print('hello world')", "print(1 + 2)", "print('goodbye friend')" }
+}
+
+{
+  lang = "python",
+  leading_offset = 0,
+  range = {
+    from = { 11, 0 },
+    to = { 14, 0 }
+  },
+  text = { "print('hello world')", "print(1 + 2)", "print('goodbye friend')" }
+}
+```
+
+```{python}
+print"this is a new cell"
 ```
