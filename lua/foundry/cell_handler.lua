@@ -5,6 +5,7 @@ local Cell = require('foundry.cell')
 local bridge = require('foundry.ipy_bridge')
 
 local M = {
+    initialized = false,
     ns = vim.api.nvim_create_namespace('foundry-nvim'),
     keeper = require("otter.keeper"),
     cells = {},
@@ -24,7 +25,11 @@ local function get_chunks()
     local output = {}
     for _, chunks in pairs(all_chunks) do
         for _, chunk in ipairs(chunks) do
-            table.insert(output, chunk)
+            -- somewhat naive check for frontmatter
+            -- yaml frontmatter in a qmd should not be a cell
+            if not (chunk.lang == 'yaml' and chunk.range.from[1] == 1) then
+                table.insert(output, chunk)
+            end
         end
     end
     return output
@@ -361,11 +366,15 @@ function M.setup(plugin_root, opts)
     bridge.setup(M, plugin_root)
     bridge.start()
 
-    -- create cells
-    local chunks = get_chunks()
-    for _, chunk in ipairs(chunks) do
-        create_cell(chunk.range.from[1], chunk.range.to[1], chunk.lang)
+    -- initialize cells
+    if not M.initialized then
+        local chunks = get_chunks()
+        for _, chunk in ipairs(chunks) do
+            create_cell(chunk.range.from[1], chunk.range.to[1], chunk.lang)
+        end
     end
+
+    M.initialized = true
 
     return M
 end
