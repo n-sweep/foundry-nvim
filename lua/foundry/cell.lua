@@ -106,7 +106,7 @@ function Cell:new(start_row, end_row, lang, namespace, opts)
     setmetatable(obj, Cell)
 
     -- mixing 0- and 1-based indexing
-    obj:_update_display(start_row - 1, end_row - 1)
+    obj:_update_display(start_row - 1, end_row)
 
     return obj
 end
@@ -170,9 +170,9 @@ function Cell:_update_display(start_row, end_row)
         self.id = cell_id
     end
 
-    local output_header_id = vim.api.nvim_buf_set_extmark(0, self.ns, end_row + 1, 0, {
+    local output_header_id = vim.api.nvim_buf_set_extmark(0, self.ns, end_row, 0, {
         id = self.output_header_id,
-        end_row = end_row + 1,
+        end_row = end_row,
         end_col = 0,
         end_right_gravity = true,
         virt_text = {{ out_header, hl_group }},
@@ -184,7 +184,7 @@ function Cell:_update_display(start_row, end_row)
     end
 
     if self.language == 'python' then
-        local output_text_id = vim.api.nvim_buf_set_extmark(0, self.ns, end_row + 1, 0, {
+        local output_text_id = vim.api.nvim_buf_set_extmark(0, self.ns, end_row, 0, {
             id = self.output_text_id,
             virt_lines = vlines,
         })
@@ -210,7 +210,7 @@ end
 function Cell:get_pos()
     local em = self:_get_extmark(self.id)
     local output_em = self:_get_extmark(self.output_header_id)
-    return em[1], output_em[1] - 1
+    return em[1], output_em[1]
 end
 
 
@@ -253,7 +253,7 @@ function Cell:get_execution_input()
         lines = get_selected_lines()
         vim.api.nvim_input('<Esc>')  -- exit select mode
     else
-        lines = vim.fn.getline(start_row + 2, end_row + 1)
+        lines = vim.fn.getline(start_row + 2, end_row)
     end
 
     return table.concat(lines, '\n'):match("^%s*(.-)%s*$")

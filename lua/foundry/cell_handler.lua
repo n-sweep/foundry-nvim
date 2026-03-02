@@ -56,7 +56,7 @@ local function get_extmark_under_cursor(row)
     local extmarks = vim.api.nvim_buf_get_extmarks(0, M.ns, 0, -1, { details = true })
     for _, extmark in ipairs(extmarks) do
         local id, start_row, details = extmark[1], extmark[2], extmark[4]
-        if details and details.end_row then
+        if M.cells[id] and details and details.end_row then
             if row >= start_row and row <= details.end_row then
                 return id
             end
@@ -89,7 +89,7 @@ end
 --- Creates a new cell if a chunk is found but no cell exists yet.
 --- @return Cell|nil cell The cell at cursor position, or nil if none found
 local function get_cell_under_cursor()
-    local row = vim.api.nvim_win_get_cursor(0)[1]
+    local row = vim.api.nvim_win_get_cursor(0)[1] - 1
     local cell_id = get_extmark_under_cursor(row)
 
     if cell_id > 0 then
@@ -292,7 +292,7 @@ function M.prune_cells()
         else
             -- convert from 0-indexed (neovim) to 1-indexed (lua) for comparison
             local start_row, end_row = cell:get_pos()
-            local key = (start_row + 1) .. ":" .. (end_row + 1)
+            local key = (start_row + 1) .. ":" .. end_row
 
             if not valid_pos[key] then
                 cell:delete()
