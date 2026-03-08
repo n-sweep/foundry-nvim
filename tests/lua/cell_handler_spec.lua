@@ -31,6 +31,7 @@ describe("execute_cell cursor position", function()
             '```',
         })
         vim.api.nvim_set_current_buf(buf)
+        vim.bo.filetype = 'quarto'
 
         package.loaded['otter.keeper'] = {
             extract_code_chunks = function()
@@ -349,5 +350,243 @@ describe("cell_handler", function()
             cell_handler.handle_ipy_message(msg)
             assert.is_true(cell_handler.ipython_down)
         end)
+    end)
+end)
+
+
+-- Regression test for the indexing bug: row from nvim_win_get_cursor is 1-indexed but
+-- was being passed as 0-indexed to get_quarto_chunk_under_cursor, which compares against
+-- 1-indexed otter chunk positions. This caused cells to silently not be found when the
+-- cursor was on the opening fence line of a cell that had no extmark yet.
+describe("cell_handler chunk lookup indexing fix", function()
+    local cell_handler
+    local buf
+    local executed_cell_ids
+    local executed_codes
+
+    before_each(function()
+        package.loaded['foundry.logging'] = {
+            get_logger = function()
+                return { info = function() end, warn = function() end, error = function() end }
+            end
+        }
+
+        executed_cell_ids = {}
+        executed_codes = {}
+        package.loaded['foundry.ipy_bridge'] = {
+            setup = function() end,
+            start = function() return true end,
+            execute = function(cell_id, code)
+                table.insert(executed_cell_ids, cell_id)
+                table.insert(executed_codes, code)
+            end
+        }
+
+        -- Start with an empty buffer so setup() creates no cells (no extmarks)
+        buf = vim.api.nvim_create_buf(true, false)
+        vim.api.nvim_set_current_buf(buf)
+        vim.bo.filetype = 'quarto'
+
+        package.loaded['otter.keeper'] = {
+            extract_code_chunks = function() return {} end
+        }
+
+        package.loaded['foundry.cell_handler'] = nil
+        cell_handler = require('foundry.cell_handler')
+        cell_handler.setup('/plugin', { display_max_lines = nil, border = 'single' })
+    end)
+
+    after_each(function()
+        package.loaded['foundry.logging'] = nil
+        package.loaded['foundry.ipy_bridge'] = nil
+        package.loaded['foundry.cell_handler'] = nil
+        package.loaded['otter.keeper'] = nil
+        vim.api.nvim_buf_delete(buf, { force = true })
+    end)
+
+    it("finds a cell when cursor is on the opening fence line with no extmark", function()
+        -- Add a cell to the buffer after setup (so no extmark exists for it yet)
+        vim.api.nvim_buf_set_lines(buf, 0, -1, false, {
+            '```{python}',
+            'x = 1',
+            '```',
+        })
+        -- Update chunk_provider so it finds this new cell
+        cell_handler.chunk_provider = {
+            extract_code_chunks = function()
+                return { python = { { range = { from = {1, 0}, to = {2, 0} }, lang = 'python' } } }
+            end
+        }
+
+        -- Cursor on the opening fence line (line 1, 1-indexed)
+        vim.api.nvim_win_set_cursor(0, {1, 0})
+        cell_handler.execute_cell()
+
+        -- Without the fix, row=0 is compared against from[1]=1 and 0>=1 is false,
+        -- so no cell is found. With the fix, row=1 >= from[1]=1, cell is found.
+        assert.are.equal(1, #executed_cell_ids)
+        assert.are.equal('x = 1', executed_codes[1])
+    end)
+
+    it("finds a cell when cursor is on the fence of a cell not at line 1", function()
+        -- Two cells; cursor on the opening fence of the second (line 4)
+        vim.api.nvim_buf_set_lines(buf, 0, -1, false, {
+            '```{python}',
+            'x = 1',
+            '```',
+            '```{python}',
+            'y = 2',
+            '```',
+        })
+        cell_handler.chunk_provider = {
+            extract_code_chunks = function()
+                return { python = {
+                    { range = { from = {1, 0}, to = {2, 0} }, lang = 'python' },
+                    { range = { from = {4, 0}, to = {5, 0} }, lang = 'python' },
+                }}
+            end
+        }
+
+        -- Cursor on the opening fence of the second cell (line 4)
+        vim.api.nvim_win_set_cursor(0, {4, 0})
+        cell_handler.execute_cell()
+
+        assert.are.equal(1, #executed_cell_ids)
+        assert.are.equal('y = 2', executed_codes[1])
+    end)
+end)
+
+
+describe("cell_handler with ipynb (python filetype)", function()
+    local cell_handler
+    local buf
+    local executed_cell_ids
+    local executed_codes
+
+    -- buffer layout:
+    -- line 1: # %%      <- cell 1 delimiter
+    -- line 2: x = 1     <- cell 1 content
+    -- line 3: y = 2     <- cell 1 content
+    -- line 4: # %%      <- cell 2 delimiter
+    -- line 5: z = 3     <- cell 2 content
+
+    before_each(function()
+        package.loaded['foundry.logging'] = {
+            get_logger = function()
+                return { info = function() end, warn = function() end, error = function() end }
+            end
+        }
+
+        executed_cell_ids = {}
+        executed_codes = {}
+        package.loaded['foundry.ipy_bridge'] = {
+            setup = function() end,
+            start = function() return true end,
+            execute = function(cell_id, code)
+                table.insert(executed_cell_ids, cell_id)
+                table.insert(executed_codes, code)
+            end
+        }
+
+        buf = vim.api.nvim_create_buf(true, false)
+        vim.api.nvim_buf_set_lines(buf, 0, -1, false, {
+            '# %%',
+            'x = 1',
+            'y = 2',
+            '# %%',
+            'z = 3',
+        })
+        vim.api.nvim_set_current_buf(buf)
+        vim.bo.filetype = 'python'
+
+        -- otter.keeper must be present at module load time even for ipynb mode
+        package.loaded['otter.keeper'] = {
+            extract_code_chunks = function() return {} end
+        }
+
+        -- ipynb_provider mock returning chunks that match the buffer above:
+        --   cell 1: from[1]=1 (# %% at line 1), to[1]=3 (last content line)
+        --   cell 2: from[1]=4 (# %% at line 4), to[1]=5 (last content line / EOF)
+        -- getline(from[1]+1, to[1]) gives the code content, skipping the # %% line.
+        package.loaded['foundry.ipynb_provider'] = {
+            extract_code_chunks = function()
+                return { python = {
+                    { range = { from = {1, 0}, to = {3, 0} }, lang = 'python' },
+                    { range = { from = {4, 0}, to = {5, 0} }, lang = 'python' },
+                }}
+            end
+        }
+
+        package.loaded['foundry.cell_handler'] = nil
+        cell_handler = require('foundry.cell_handler')
+        cell_handler.setup('/plugin', { display_max_lines = nil, border = 'single' })
+    end)
+
+    after_each(function()
+        package.loaded['foundry.logging'] = nil
+        package.loaded['foundry.ipy_bridge'] = nil
+        package.loaded['foundry.cell_handler'] = nil
+        package.loaded['otter.keeper'] = nil
+        package.loaded['foundry.ipynb_provider'] = nil
+        vim.api.nvim_buf_delete(buf, { force = true })
+    end)
+
+    local function execute_from_row(row)
+        vim.api.nvim_win_set_cursor(0, {row, 0})
+        cell_handler.execute_cell()
+        return executed_cell_ids[#executed_cell_ids], executed_codes[#executed_codes]
+    end
+
+    it("uses ipynb_provider (not otter) for chunk detection", function()
+        local otter_called = false
+        cell_handler.keeper = {
+            extract_code_chunks = function() otter_called = true; return {} end
+        }
+        execute_from_row(2)
+        assert.is_false(otter_called)
+    end)
+
+    it("finds and executes cell 1 from a content line", function()
+        local id, code = execute_from_row(2)
+        assert.is_not_nil(id)
+        assert.are.equal('x = 1\ny = 2', code)
+    end)
+
+    it("finds and executes cell 1 from its last content line", function()
+        local id, code = execute_from_row(3)
+        assert.is_not_nil(id)
+        assert.are.equal('x = 1\ny = 2', code)
+    end)
+
+    it("finds and executes cell 2 from its content line", function()
+        local id, code = execute_from_row(5)
+        assert.is_not_nil(id)
+        assert.are.equal('z = 3', code)
+    end)
+
+    it("finds and executes cell 1 from its # %% delimiter line", function()
+        local id, code = execute_from_row(1)
+        assert.is_not_nil(id)
+        assert.are.equal('x = 1\ny = 2', code)
+    end)
+
+    it("code does not include the # %% delimiter line", function()
+        local _, code = execute_from_row(2)
+        assert.is_nil(code:match('^# %%%%'))
+    end)
+
+    it("cells 1 and 2 are distinct", function()
+        local id1 = execute_from_row(2)
+        local id2 = execute_from_row(5)
+        assert.is_not_nil(id1)
+        assert.is_not_nil(id2)
+        assert.are_not.equal(id1, id2)
+    end)
+
+    it("re-executing a cell reuses the same cell id", function()
+        local id1 = execute_from_row(2)
+        executed_cell_ids = {}
+        local id2 = execute_from_row(2)
+        assert.are.equal(id1, id2)
     end)
 end)
