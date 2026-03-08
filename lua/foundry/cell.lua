@@ -8,8 +8,7 @@
 ---@field status string Current status (e.g., "Done", "Error", "Running", "On Hold")
 ---@field output_lines string[] Output lines from execution
 ---@field id number Extmark ID for cell boundary
----@field output_header_id number Extmark ID for output header
----@field output_text_id number Extmark ID for output content
+---@field output_id number Extmark ID for output (header + content as virt_lines)
 local Cell = {}
 Cell.__index = Cell
 
@@ -99,8 +98,7 @@ function Cell:new(start_row, end_row, lang, namespace, opts)
         status = 'On Hold',
         output_lines = {},
         id = nil,
-        output_header_id = nil,
-        output_text_id = nil,
+        output_id = nil,
     }
 
     setmetatable(obj, Cell)
@@ -141,19 +139,34 @@ function Cell:_update_display(start_row, end_row)
     end
 
     -- prepare lines for virtual text
-    local vlines = {}
     local win_width = vim.api.nvim_win_get_width(0)
     local sign_width = vim.fn.getwininfo(vim.fn.win_getid())[1].textoff
     local buf_width = win_width - sign_width
+    local vlines = { {{ out_header, hl_group }} }
     for _, line in ipairs(lines) do
         local text_width = vim.fn.strdisplaywidth(line)
         local padding = string.rep(' ', math.max(0, buf_width - text_width))
         table.insert(vlines, {{ line .. padding, hl_group }})
     end
 
+    if self.language == 'markdown' then
+        -- no virtual text for markdown cells; extmarks still needed for navigation
+        local cell_id = vim.api.nvim_buf_set_extmark(0, self.ns, start_row, 0, {
+            id = self.id,
+            end_row = end_row,
+            end_col = 0,
+            end_right_gravity = true,
+        })
+        local output_id = vim.api.nvim_buf_set_extmark(0, self.ns, end_row, 0, {
+            id = self.output_id,
+        })
+        if self.id == nil then self.id = cell_id end
+        if self.output_id == nil then self.output_id = output_id end
+        return
+    end
+
     if self.language ~= 'python' then
         inp_header = ''
-        out_header = '[no runner for `' .. self.language .. '` cells]'
     end
 
     -- create/update cell extmarks
@@ -170,28 +183,14 @@ function Cell:_update_display(start_row, end_row)
         self.id = cell_id
     end
 
-    local output_header_id = vim.api.nvim_buf_set_extmark(0, self.ns, end_row, 0, {
-        id = self.output_header_id,
-        end_row = end_row,
-        end_col = 0,
-        end_right_gravity = true,
-        virt_text = {{ out_header, hl_group }},
-        virt_text_pos = 'eol',
+    local output_id = vim.api.nvim_buf_set_extmark(0, self.ns, end_row, 0, {
+        id = self.output_id,
+        virt_lines = vlines,
+        virt_lines_above = true,
     })
 
-    if self.output_header_id == nil then
-        self.output_header_id = output_header_id
-    end
-
-    if self.language == 'python' then
-        local output_text_id = vim.api.nvim_buf_set_extmark(0, self.ns, end_row, 0, {
-            id = self.output_text_id,
-            virt_lines = vlines,
-        })
-
-        if self.output_text_id == nil then
-            self.output_text_id = output_text_id
-        end
+    if self.output_id == nil then
+        self.output_id = output_id
     end
 end
 
@@ -209,8 +208,7 @@ end
 --- @return number end_row Ending row (0-indexed)
 function Cell:get_pos()
     local em = self:_get_extmark(self.id)
-    local output_em = self:_get_extmark(self.output_header_id)
-    return em[1], output_em[1]
+    return em[1], em[3].end_row
 end
 
 
@@ -228,11 +226,7 @@ end
 --- Sets status to 'deleted' so cell_handler can remove it from M.cells.
 function Cell:delete()
     vim.api.nvim_buf_del_extmark(0, self.ns, self.id)
-    vim.api.nvim_buf_del_extmark(0, self.ns, self.output_header_id)
-
-    if self.output_text_id ~= nil then
-        vim.api.nvim_buf_del_extmark(0, self.ns, self.output_text_id)
-    end
+    vim.api.nvim_buf_del_extmark(0, self.ns, self.output_id)
 
     -- the Cell object does not know about the cell handler that stores Cells
     -- cell handler must be able to remove deleted Cells from its memory

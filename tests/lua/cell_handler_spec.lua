@@ -467,8 +467,9 @@ describe("cell_handler with ipynb (python filetype)", function()
     -- line 1: # %%      <- cell 1 delimiter
     -- line 2: x = 1     <- cell 1 content
     -- line 3: y = 2     <- cell 1 content
-    -- line 4: # %%      <- cell 2 delimiter
-    -- line 5: z = 3     <- cell 2 content
+    -- line 4:           <- blank line (part of cell 1 range)
+    -- line 5: # %%      <- cell 2 delimiter
+    -- line 6: z = 3     <- cell 2 content
 
     before_each(function()
         package.loaded['foundry.logging'] = {
@@ -493,6 +494,7 @@ describe("cell_handler with ipynb (python filetype)", function()
             '# %%',
             'x = 1',
             'y = 2',
+            '',
             '# %%',
             'z = 3',
         })
@@ -505,14 +507,14 @@ describe("cell_handler with ipynb (python filetype)", function()
         }
 
         -- ipynb_provider mock returning chunks that match the buffer above:
-        --   cell 1: from[1]=1 (# %% at line 1), to[1]=3 (last content line)
-        --   cell 2: from[1]=4 (# %% at line 4), to[1]=5 (last content line / EOF)
+        --   cell 1: from[1]=1 (# %% at line 1), to[1]=3 (last non-blank content line)
+        --   cell 2: from[1]=5 (# %% at line 5), to[1]=6 (last content line / EOF)
         -- getline(from[1]+1, to[1]) gives the code content, skipping the # %% line.
         package.loaded['foundry.ipynb_provider'] = {
             extract_code_chunks = function()
                 return { python = {
                     { range = { from = {1, 0}, to = {3, 0} }, lang = 'python' },
-                    { range = { from = {4, 0}, to = {5, 0} }, lang = 'python' },
+                    { range = { from = {5, 0}, to = {6, 0} }, lang = 'python' },
                 }}
             end
         }
@@ -559,7 +561,7 @@ describe("cell_handler with ipynb (python filetype)", function()
     end)
 
     it("finds and executes cell 2 from its content line", function()
-        local id, code = execute_from_row(5)
+        local id, code = execute_from_row(6)
         assert.is_not_nil(id)
         assert.are.equal('z = 3', code)
     end)
@@ -577,7 +579,7 @@ describe("cell_handler with ipynb (python filetype)", function()
 
     it("cells 1 and 2 are distinct", function()
         local id1 = execute_from_row(2)
-        local id2 = execute_from_row(5)
+        local id2 = execute_from_row(6)
         assert.is_not_nil(id1)
         assert.is_not_nil(id2)
         assert.are_not.equal(id1, id2)

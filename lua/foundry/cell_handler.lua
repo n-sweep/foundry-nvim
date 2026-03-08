@@ -8,20 +8,21 @@ local M = {
     initialized = false,
     ns = vim.api.nvim_create_namespace('foundry-nvim'),
     keeper = require("otter.keeper"),
+    chunk_provider = nil,
     cells = {},
     executor = function() logger:warn('cell executor not set') end,
-    supported_langs = { python = true }
+    supported_langs = { python = true },
 }
 
 
 -- local functions -------------------------------------------------------------
 
 
---- Extract all code chunks from the current buffer using otter.keeper.
+--- Extract all code chunks from the current buffer using the chunk_provider.
 --- @return table[] chunks Array of chunk objects with range and lang fields
 local function get_chunks()
     local bn = vim.api.nvim_get_current_buf()
-    local all_chunks = M.keeper.extract_code_chunks(bn)
+    local all_chunks = M.chunk_provider.extract_code_chunks(bn)
     local output = {}
     for _, chunks in pairs(all_chunks) do
         for _, chunk in ipairs(chunks) do
@@ -67,10 +68,10 @@ local function get_extmark_under_cursor(row)
 end
 
 
---- Find the Quarto code chunk that contains the given row position.
+--- Find the code chunk that contains the given row position.
 --- @param row number Row position (1-indexed) to check
 --- @return table|nil chunk Chunk object with range and lang fields, or nil if not found
-local function get_quarto_chunk_under_cursor(row)
+local function get_chunk_under_cursor(row)
     local chunks = get_chunks()
     for _, chunk in ipairs(chunks) do
         local start_row = chunk.range.from[1]
@@ -85,20 +86,19 @@ end
 
 
 --- Get or create a cell at the current cursor position.
---- First checks for existing cell extmark, then checks for Quarto chunk.
+--- First checks for existing cell extmark, then checks for a code chunk.
 --- Creates a new cell if a chunk is found but no cell exists yet.
 --- @return Cell|nil cell The cell at cursor position, or nil if none found
 local function get_cell_under_cursor()
-    local row = vim.api.nvim_win_get_cursor(0)[1] - 1
-    local cell_id = get_extmark_under_cursor(row)
+    local row = vim.api.nvim_win_get_cursor(0)[1]
+    local cell_id = get_extmark_under_cursor(row - 1)
 
     if cell_id > 0 then
         logger:info('cell found: ' .. cell_id)
         return M.cells[cell_id]
     end
 
-    -- if no extmark found, look for a quarto chunk
-    local chunk = get_quarto_chunk_under_cursor(row)
+    local chunk = get_chunk_under_cursor(row)
     if chunk ~= nil then
         logger:info('new cell created')
         return create_cell(chunk.range.from[1], chunk.range.to[1], chunk.lang)
@@ -361,6 +361,16 @@ function M.setup(plugin_root, opts)
 
     M.opts = opts
     M.executor = bridge.execute
+
+    -- set up chunk provider based on filetype
+    local ft = vim.bo.filetype
+    if ft == 'python' then
+        M.chunk_provider = require('foundry.ipynb_provider')
+    else
+        M.chunk_provider = {
+            extract_code_chunks = function(bn) return M.keeper.extract_code_chunks(bn) end
+        }
+    end
 
     -- start the ipython kernel server
     bridge.setup(M, plugin_root)

@@ -81,7 +81,10 @@ function M.setup(opts)
 
     -- create a highlight group to match quarto's
     local chl = vim.api.nvim_get_hl(0, {name = 'Comment'})
-    chl.bg = vim.api.nvim_get_hl(0, {name = 'RCodeBlock'}).bg
+    local rcode_hl = vim.api.nvim_get_hl(0, {name = 'RCodeBlock'})
+    if rcode_hl and rcode_hl.bg then
+        chl.bg = rcode_hl.bg
+    end
     vim.api.nvim_set_hl(0, "FoundryCellHL", chl)
 
 
