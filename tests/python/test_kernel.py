@@ -8,7 +8,7 @@ from python.kernel import Kernel
 @pytest.fixture(scope="module")
 def kernel():
     """Create a single kernel for all tests in this module."""
-    k = Kernel({"pid": "12345", "file": "/path/to/file.py"})
+    k = Kernel({"pid": "12345", "file": "/tmp/path/to/file.py"})
     yield k
     k.shutdown()
 

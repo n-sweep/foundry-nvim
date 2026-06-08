@@ -7,6 +7,7 @@ requires-python = ">=3.13"
 dependencies = [
     "ipykernel>=6.29.5",
     "jupyter-client>=8.6.3",
+    "jupytext>=1.19.3",
     "pandas>=2.3.1",
     "plotly>=6.2.0",
     "pynvim>=0.5.2",
@@ -20,4 +21,4 @@ filterwarnings = [
 ]
 log_cli = true
 log_cli_level = "INFO"
-pythonpath = ["."]
+pythonpath = [".", "python"]
