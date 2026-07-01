@@ -1,96 +1,150 @@
-local M = {}
+vim.cmd('set rtp+=/home/n/Repos/foundry-nvim')
 
 
---- Initialize the foundry-nvim plugin.
---- Sets up logging, cell handler, keymaps, and autocommands.
---- @param opts table|nil Configuration options (currently unused)
-function M.setup(opts)
+--- dev hot reload
+function _G.reload()
+    package.loaded['foundry.cell'] = nil
+    package.loaded['foundry.core'] = nil
+    package.loaded['foundry.ipy_bridge'] = nil
+    package.loaded['foundry.logging'] = nil
+    package.loaded['foundry.utils'] = nil
+    dofile('/home/n/Repos/foundry-nvim/lua/foundry/init.lua')
+end
 
-    -- enable requiring from local directory
-    local current_file = debug.getinfo(1, "S").source:sub(2):match("(.*/)")
-    local plugin_dir = vim.fn.fnamemodify(current_file, ":p:h:h:h")
 
-    package.path = (
-        plugin_dir .. "/lua/?.lua;" ..
-        plugin_dir .. "/lua/?/init.lua;" ..
-        package.path
-    )
+------
 
-    -- set up a new logger
-    local Logging = require('foundry.logging')
-    Logging:new(vim.fn.stdpath('state') .. '/foundry-nvim-lua.log', 'foundry_logger')
+-- create a new logger
+local Logging = require('foundry.logging')
+Logging:new(vim.fn.stdpath('state') .. '/foundry-nvim-lua.log', 'foundry_logger')
+local logger = Logging:get_logger('foundry_logger')
 
-    local ch = require('foundry.cell_handler').setup(plugin_dir, {
-        display_max_lines = 16,
-        border = 'rounded'
+local core = require('foundry.core')
+
+
+--- usercommands ---------------------------------------------------------------
+
+vim.api.nvim_create_user_command("FoundryShutdown", core.stop_ipython, {})
+
+
+-- cell execution
+
+vim.api.nvim_create_user_command("FoundryExecute", core.execute_cell_under_cursor, {})
+vim.api.nvim_create_user_command("FoundryExecuteStep", function(opts)
+    core.execute_cell_under_cursor()
+    core.step_cells(tonumber(opts.args))
+end, {})
+
+
+-- navigation
+
+vim.api.nvim_create_user_command(
+    "FoundryStep",
+    function(opts) core.step_cells(tonumber(opts.args)) end,
+    { nargs = 1 }
+)
+
+vim.api.nvim_create_user_command("FoundryNext", "FoundryStep 1", {})
+vim.api.nvim_create_user_command("FoundryPrev", "FoundryStep -1", {})
+
+
+--- keymaps --------------------------------------------------------------------
+
+local function test()
+    local cell = core.get_cell_under_cursor()
+end
+
+
+local function set_keymaps(buf)
+
+    -- F33 -> Ctrl+Enter
+    vim.keymap.set({'n', 'v'}, '<F33>', ":FoundryExecute<CR>", {
+        desc = 'Foundry execute the current cell',
+        buffer = buf,
+        silent = true,
     })
 
+    -- F34 -> Shift+Enter
+    vim.keymap.set({'n', 'v'}, '<F34>', ":FoundryExecuteStep<CR>", {
+        desc = 'Foundry execute the current cell and step forward',
+        buffer = buf,
+        silent = true,
+    })
 
-    -- user functions --------------------------------------------------------------
-
-    -- expose functions to the exterior module for keymaps, etc...
-    M.delete_all_cells      = ch.delete_all_cells
-    M.delete_cell           = ch.delete_cell_under_cursor
-    M.execute_cell          = ch.execute_cell
-    M.goto_next_cell        = ch.goto_next_cell
-    M.goto_prev_cell        = ch.goto_prev_cell
-    M.open_cell             = ch.open_cell_floating_window
-    M.restart_kernel        = ch.restart_kernel
-    M.yank_cell_input       = ch.yank_cell_input
-    M.yank_cell_output      = ch.yank_cell_output
-
-
-    -- usercommands ----------------------------------------------------------------
-
-    vim.api.nvim_create_user_command( "FoundryDeleteAll", M.delete_all_cells,   {} )
-    vim.api.nvim_create_user_command( "FoundryDelete",    M.delete_cell,        {} )
-    vim.api.nvim_create_user_command( "FoundryExecute",   M.execute_cell,       {} )
-    vim.api.nvim_create_user_command( "FoundryNextCell",  M.goto_next_cell,     {} )
-    vim.api.nvim_create_user_command( "FoundryOpenCell",  M.open_cell,          {} )
-    vim.api.nvim_create_user_command( "FoundryPrevCell",  M.goto_prev_cell,     {} )
-    vim.api.nvim_create_user_command( "FoundryRestart",   M.restart_kernel,     {} )
-    vim.api.nvim_create_user_command( "FoundryYankIn",    M.yank_cell_input,    {} )
-    vim.api.nvim_create_user_command( "FoundryYankOut",   M.yank_cell_output,   {} )
-
-
-    -- autocommands ----------------------------------------------------------------
-
-    -- shut down kernel if buffer exits
-    vim.api.nvim_create_autocmd('BufDelete', {
+    -- F31 -> Shift+Tab
+    vim.keymap.set('n', '<F31>', ":FoundryNext<CR>", {
+        desc = 'Foundry move cursor to next cell',
         buffer = 0,
-        -- buffer must be passed in manually
-        callback = function(args) ch.shutdown_kernel(args.buf) end
+        silent = true,
     })
 
-    -- shut down ipython if vim exits
-    vim.api.nvim_create_autocmd('ExitPre', {
+    -- F32 -> Alt+Tab
+    vim.keymap.set('n', '<F32>', ":FoundryPrev<CR>", {
+        desc = 'Foundry move cursor to previous cell',
         buffer = 0,
-        callback = function()
-            ch.shutdown_ipython()
-            vim.wait(10000, function() return ch.ipython_down end, 100)
-        end
+        silent = true,
     })
 
-    -- automatically clear virtual text around cells that have been deleted
-    vim.api.nvim_create_autocmd('TextChanged', {
-        buffer = 0,
-        callback = ch.prune_cells
+    vim.keymap.set({'n', 'v'}, '<leader>ft', test, {
+        buffer = buf,
     })
-
-    -- hl groups -------------------------------------------------------------------
-
-    -- create a highlight group to match quarto's
-    local chl = vim.api.nvim_get_hl(0, {name = 'Comment'})
-    local rcode_hl = vim.api.nvim_get_hl(0, {name = 'RCodeBlock'})
-    if rcode_hl and rcode_hl.bg then
-        chl.bg = rcode_hl.bg
-    end
-    vim.api.nvim_set_hl(0, "FoundryCellHL", chl)
-
-
-    vim.notify('Foundry startup complete')
 
 end
 
 
-return M
+--- autocommands ---------------------------------------------------------------
+
+vim.api.nvim_create_augroup("Foundry", { clear = true })
+
+vim.api.nvim_create_autocmd("BufReadCmd", {
+    group = "Foundry",
+    pattern = "*.ipynb",
+    callback = function(ev)
+        vim.bo[ev.buf].buftype = "acwrite"
+        vim.bo[ev.buf].filetype = "python"
+        vim.api.nvim_buf_set_name(ev.buf, ev.file)
+
+        core.load_notebook(ev.file)
+        core.start_ipython()
+        set_keymaps(ev.buf)
+    end,
+})
+
+vim.api.nvim_create_autocmd("BufWriteCmd", {
+    group = "Foundry",
+    pattern = "*.ipynb",
+    callback = function(ev)
+        local lines = vim.api.nvim_buf_get_lines(ev.buf, 0, -1, false)
+        -- Write the buffer content back however you want
+        -- vim.fn.writefile(lines, ev.file)
+        vim.bo[ev.buf].modified = false
+    end,
+})
+
+local function shutdown()
+    core.stop_ipython()
+    vim.wait(10000, function() return core.ipython_down end, 100)
+end
+
+-- shut down kernel if buffer exits
+vim.api.nvim_create_autocmd('BufDelete', {
+    group = "Foundry",
+    pattern = "*.ipynb",
+    -- buffer must be passed in manually
+    callback = shutdown
+})
+
+-- shut down ipython if vim exits
+vim.api.nvim_create_autocmd('ExitPre', {
+    group = "Foundry",
+    pattern = "*.ipynb",
+    callback = shutdown
+})
+
+
+--- highlight groups -----------------------------------------------------------
+
+local hl_group = 'FoundryCellHL'
+local comment = vim.api.nvim_get_hl(0, {name = 'Comment'})
+local colorcol = vim.api.nvim_get_hl(0, {name = 'ColorColumn'})
+vim.api.nvim_set_hl(0, hl_group, {fg = comment.fg, bg = colorcol.bg, italic = true})

@@ -16,8 +16,9 @@
     - [papermill](https://papermill.readthedocs.io/en/latest/)
 - [nbconvert](https://minrk-nbconvert.readthedocs.io/en/stable/)
 
-
 ## Notes
+
+uuids for cells: `vim.fn.system('uuidgen')`
 
 ### editing ipynbs as different files
 
@@ -31,10 +32,10 @@ vim.api.nvim_create_autocmd("BufReadCmd", {
         -- Read the ipynb however you want, put content in buffer
         local lines = vim.fn.readfile(ev.file)  -- raw JSON, or parse & transform
         vim.api.nvim_buf_set_lines(ev.buf, 0, -1, false, lines)
-        
+
         -- Neovim still shows filename as notebook.ipynb
         vim.api.nvim_buf_set_name(ev.buf, ev.file)
-        
+
         -- Intercept saves
         vim.bo[ev.buf].buftype = "acwrite"
     end,

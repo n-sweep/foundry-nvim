@@ -62,7 +62,11 @@ class KernelManager:
         kn = self.get(message["meta"])
 
         if message["type"] == "exec":
-            output = {"cell_id": message["cell_id"], **kn.execute(message["code"])}
+            output = {
+                "type": "execution_result",
+                "cell_id": message["cell_id"],
+                **kn.execute(message["code"])
+            }
 
             self.write(output)
 
@@ -107,8 +111,8 @@ class KernelManager:
             The message dictionary to serialize and write.
         """
         # datetime objects are not json serializable
-        if "messages" in message:
-            message["messages"] = handle_datetimes(message["messages"])
+        if "outputs" in message:
+            message["outputs"] = handle_datetimes(message["outputs"])
 
         sys.stdout.write(json.dumps(message) + "\n")
         sys.stdout.flush()

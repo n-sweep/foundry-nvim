@@ -1,11 +1,8 @@
 import logging
+import nbformat
 import zmq
 
 from jupyter_client.manager import KernelManager as KM
-from queue import Empty
-from time import sleep
-
-from python.utils import clean_traceback
 
 
 class Kernel:
@@ -43,7 +40,6 @@ class Kernel:
             },
         }
 
-        self.polling = False
         self.poller = zmq.Poller()
         for sock in self.sockets.keys():
             self.poller.register(sock, zmq.POLLIN)
@@ -80,10 +76,9 @@ class Kernel:
 
             case 'status':
                 self.status = msg['content']['execution_state']
-
-                # idle means execution is complete
                 if self.status == 'idle':
-                    self.polling = False
+                    # logging.info('kernel idle')
+                    pass
                 elif self.status == 'busy':
                     # logging.info('kernel busy')
                     pass
@@ -94,12 +89,10 @@ class Kernel:
             case 'execute_input':
                 logging.info(f"input received: {repr(msg['content']['code'])}")
 
-            case 'execute_result':
-                output['execute_result'] = msg['content']['data']['text/plain']
-
-            case 'stream':
-                output['text'] += msg['content']['text']
-                output['execute_result'] = ''
+            case 'execute_result' | 'stream' | 'display_data' | 'error':
+                fmt_output = nbformat.v4.output_from_msg(msg)
+                logging.info(f"output message: {fmt_output}")
+                output['outputs'].append(fmt_output)
 
             case _:
                 logging.warning(f"Unhandled IOPUB message type: {msg['header']['msg_type']}")
@@ -107,6 +100,10 @@ class Kernel:
 
     def _on_shell(self, msg: dict, output: dict) -> None:
         msg_type = msg['header']['msg_type']
+
+        if msg_type.endswith('_reply'):
+            self._awaiting_reply = False
+
         match msg_type:
 
             case 'execute_reply':
@@ -128,14 +125,14 @@ class Kernel:
     def _retrieve_messages(self, exe_id: str|None = None) -> dict:
         """ """
         output = {
+            "outputs": [],
             "status": 'ok',
-            "text": '',
-            "execute_result": '',
             "data": {},
         }
 
-        self.polling = True
-        while self.polling:
+        self._awaiting_reply = True
+        self.status = 'start_polling'
+        while (self.status != 'idle') or self._awaiting_reply:
             socks = dict(self.poller.poll())
             for sock in socks:
                 socket = self.sockets[sock]
@@ -145,7 +142,6 @@ class Kernel:
                 else:
                     logging.warning(f"message id mismatch: {msg}")
 
-        output['text'] += output['execute_result']
         output['execution_count'] = self.execution_count
 
         return output

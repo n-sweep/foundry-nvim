@@ -1,38 +1,38 @@
+import nbformat
 import pytest
+
+from nbclient import NotebookClient
 
 from python.kernel import Kernel
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture(scope="function")
 def kernel():
-    """Create a single kernel for all tests in this module."""
     k = Kernel({"pid": "12345", "file": "/path/to/file.py"})
     yield k
     k.shutdown()
     assert k.status == 'down'
 
 
-def test_kernel_execution(kernel):
+@pytest.fixture(scope="module")
+def notebook():
+    nb = nbformat.v4.new_notebook()
+    nb['cells'] = [
+        nbformat.v4.new_code_cell("print('hello world')"),
+        nbformat.v4.new_code_cell("1 + 1"),
+        nbformat.v4.new_code_cell("print('hello world')\n1 + 1"),
+        nbformat.v4.new_code_cell("1 + 1\nprint('hello world')")
+    ]
 
-    # calling .info() at initialization starts the execution count at 1
-    assert kernel.execution_count == 0
+    client = NotebookClient(nb)
+    client.execute()
 
-    result = kernel.execute("print('test')")
-    assert kernel.execution_count == 1
-    assert result["status"] == "ok"
-    assert result["text"] == "test\n"
+    return nb
 
-    result = kernel.execute("1 + 1")
-    assert kernel.execution_count == 2
-    assert result["status"] == "ok"
-    assert result["text"] == "2"
 
-    result = kernel.execute("print('test')\n1 + 1")
-    assert kernel.execution_count == 3
-    assert result["status"] == "ok"
-    assert result["text"] == "test\n2"
-
-    result = kernel.execute("1 + 1\nprint('test')")
-    assert kernel.execution_count == 4
-    assert result["status"] == "ok"
-    assert result["text"] == "test\n"
+def test_kernel_execution(kernel, notebook):
+    for cell in notebook.cells:
+        code = cell['source']
+        result = kernel.execute(code)
+        assert result["status"] == "ok"
+        assert result["outputs"] == cell["outputs"]
