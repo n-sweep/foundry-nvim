@@ -215,6 +215,7 @@ end
 
 
 --- Create extmarks for cell header and output fields and place in buffer
+--- @param row integer The row to place the cell header on (0-based)
 function Cell:place_in_buffer(row)
     -- create cell header extmark
     if row == nil then
@@ -222,19 +223,19 @@ function Cell:place_in_buffer(row)
     end
     self.header_id = vim.api.nvim_buf_set_extmark(0, self.ns, row, 0, {})
 
-    -- insert cell input lines into buffer
+    -- insert cell input lines into buffer after header row
     local cell_input = vim.split(self.data.source, '\n')
     if self.type == 'markdown' then
         for i, line in ipairs(cell_input) do
             cell_input[i] = '# ' .. line
         end
     end
-    vim.api.nvim_buf_set_lines(0, -1, -1, false, cell_input)
-    vim.api.nvim_buf_set_lines(0, -1, -1, false, {''})
+    vim.api.nvim_buf_set_lines(0, row + 1, row + 1, false, cell_input)
+    vim.api.nvim_buf_set_lines(0, row + 1 + #cell_input, row + 1 + #cell_input, false, {''})
 
-    -- create cell output extmark
-    row = row + #cell_input + 1
-    self.output_id = vim.api.nvim_buf_set_extmark(0, self.ns, row, 0, {})
+    -- create cell output extmark on the blank separator line
+    local output_row = row + #cell_input + 1
+    self.output_id = vim.api.nvim_buf_set_extmark(0, self.ns, output_row, 0, {})
 
     self:update_extmarks()
 end

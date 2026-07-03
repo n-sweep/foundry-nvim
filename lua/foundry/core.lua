@@ -268,9 +268,28 @@ function M.delete_cell_under_cursor()
         end
     end
 
+    local s, e = cell:get_range()
+    local next_cell = M.cells[M.cell_order[idx + 1]]
+
+    -- delete the cell's input lines (between header row exclusive and output row exclusive)
+    -- the header row (s) is the shared boundary with the previous cell; keep it
+    -- delete from s+1 up to and including e (the output/boundary row with next cell)
+    vim.api.nvim_buf_set_lines(0, s + 1, e + 1, false, {})
+
+    -- delete the cell's extmarks
+    vim.api.nvim_buf_del_extmark(0, M.ns, cell.header_id)
+    vim.api.nvim_buf_del_extmark(0, M.ns, cell.output_id)
+
+    -- reposition next cell's header_id to the now-exposed boundary row (s) and refresh its decorations
+    if next_cell then
+        vim.api.nvim_buf_set_extmark(0, M.ns, s, 0, {
+            id = next_cell.header_id,
+        })
+        next_cell:update_extmarks()
+    end
+
     table.remove(M.cell_order, idx)
     M.cells[cell.id] = nil
-    M.place_cells()
 end
 
 
@@ -299,9 +318,37 @@ function M.create_cell(type, above)
 
     table.insert(M.cell_order, idx, new_cell.id)
     M.cells[new_cell.id] = new_cell
-    M.place_cells()
 
-    return cell
+    -- find the boundary row to insert at and the next cell (if any)
+    local boundary_row, next_cell
+    if above then
+        -- inserting above current cell: boundary is current cell's header row
+        local s, _ = cell:get_range()
+        boundary_row = s
+        next_cell = cell
+    else
+        -- inserting below current cell: boundary is current cell's output row
+        local _, e = cell:get_range()
+        boundary_row = e
+        -- next_cell is the cell after the current one in cell_order
+        -- idx now points to new_cell; idx+1 is the displaced next cell
+        local next_id = M.cell_order[idx + 1]
+        if next_id then next_cell = M.cells[next_id] end
+    end
+
+    -- place the new cell starting at the boundary row
+    new_cell:place_in_buffer(boundary_row)
+
+    -- reposition next cell's header_id to new cell's output row and refresh its decorations
+    if next_cell then
+        local _, new_output_row = new_cell:get_range()
+        vim.api.nvim_buf_set_extmark(0, M.ns, new_output_row, 0, {
+            id = next_cell.header_id,
+        })
+        next_cell:update_extmarks()
+    end
+
+    return new_cell
 end
 
 
