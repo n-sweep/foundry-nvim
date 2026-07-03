@@ -2,6 +2,60 @@
 -- local logger = Logging:get_logger('foundry_logger')
 local utils = require('foundry.utils')
 
+--- local functions ------------------------------------------------------------
+
+
+--- Limit output to a specific number of lines from start or end.
+--- @param lines string[] The lines to limit
+--- @param limit number Maximum number of lines to return
+--- @param last? boolean If true, return last N lines; otherwise first N lines
+--- @return string[] limited_lines The limited output
+local function limit_lines(lines, limit, last)
+    local _start, _end
+    local output = {}
+
+    if last == nil then
+        _start, _end = 1, limit + 1
+    else
+        _start, _end = #lines - limit + 1, #lines
+    end
+
+    for i = _start, _end do
+        table.insert(output, lines[i])
+    end
+
+    return output
+end
+
+
+--- Truncate long output by showing first and last lines with '...' in between.
+--- @param lines string[] The lines to truncate
+--- @param limit number Maximum number of lines to show
+--- @param middle boolean|nil If true, show first/last; otherwise show first N only
+--- @return string[] truncated_lines The truncated output
+local function truncate_output(lines, limit, middle)
+    local output, top, bot = {}, {}, {}
+
+    if middle == nil then
+        top = limit_lines(lines, limit)
+    else
+        local lh = limit / 2
+        local lt, lb = math.floor(lh), math.ceil(lh)
+        top = limit_lines(lines, lt)
+        bot = limit_lines(lines, lb, true)
+    end
+
+    for _, tbl in ipairs({ top, { '...' }, bot }) do
+        vim.list_extend(output, tbl)
+    end
+
+    return output
+end
+
+
+
+--- cell object-----------------------------------------------------------------
+
 --- Cell object representing a jupyter notebook cell
 --- Manages extmarks for cell boundaries and output display.
 ---@class Cell
@@ -9,7 +63,9 @@ local utils = require('foundry.utils')
 ---@field data table Cell data from Jupyter
 ---@field status string Current status (e.g., "Done", "Error", "Running", "On Hold")
 ---@field header_id number Extmark ID for cell header
+---@field header_txt string Extmark input header content
 ---@field output_id number Extmark ID for cell output
+---@field output_txt string Extmark output header content
 ---@field id string Jupyter cell id
 ---@field type string Cell type
 ---@field exec_count number|string Execution count or indicator
@@ -26,8 +82,6 @@ function Cell:new(namespace, data)
         ns = namespace,
         data = data,
         status = 'On Hold',
-        header_id = nil,
-        output_id = nil,
     }
 
     local mt = {
@@ -110,31 +164,38 @@ function Cell:update_extmarks(msg)
 
     -- generate cell header and output
     local cell_output = {}
-    local cell_header = ''
 
     if self.type == 'markdown' then
         -- markdown gets no output field
-        cell_header = cell_header .. '- [markdown]'
+        self.header_txt = '- [markdown]'
 
     elseif self.type == 'code' then
-        -- build input and output headers
         local cs = '[' .. tostring(self.exec_count) .. ']'
-        local in_cs, out_cs = 'In ' .. cs, 'Out ' .. cs
-        cell_header = cell_header .. in_cs .. ' ' .. self.status
-        table.insert(cell_output, out_cs)
+        self.header_txt = 'In ' .. cs .. ' ' .. self.status
+        self.output_txt = 'Out ' .. cs
+
+        -- truncate text if too long
+        local max = 15 -- self.opts.display_max_lines
+        local lines = self:get_output()
+        local nlines = #lines
+        if (max ~= nil) and (nlines > max) then
+            lines = truncate_output(lines, max, true)
+            self.output_txt = self.output_txt .. '  (' .. nlines - max .. ' lines truncated)'
+        end
+
+        table.insert(cell_output, self.output_txt)
 
         -- add cell output content
-        vim.list_extend(cell_output, self:get_output())
+        vim.list_extend(cell_output, lines)
     end
 
     -- update header
     local imark = vim.api.nvim_buf_get_extmark_by_id(0, self.ns, self.header_id, { details = true })
     vim.api.nvim_buf_set_extmark(0, self.ns, imark[1], 0, {
         id = self.header_id,
-        virt_text = utils.prep_vtext(cell_header, nil, '-'),
+        virt_text = utils.prep_vtext(self.header_txt, nil, '-'),
         end_col = 0,
         virt_text_pos = 'overlay',
-        end_right_gravity = true,
     })
 
     -- update output

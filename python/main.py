@@ -6,6 +6,7 @@ import sys
 import traceback
 
 from kernel_manager import KernelManager
+from nbformat.notebooknode import NotebookNode
 
 parser = argparse.ArgumentParser()
 parser.add_argument("pid")
@@ -45,23 +46,28 @@ def main():
             km.shutdown_all()
 
     if args.command == "read":
-        with open(args.file, 'r') as f:
-            nb = nbformat.read(f, as_version=4)
-
+        nb = nbformat.read(args.file, as_version=4)
         data = {'cells': nb.cells, 'meta': {'type': 'read'}}
-
         sys.stdout.write(json.dumps(data) + "\n")
         sys.stdout.flush()
 
     if args.command == "write":
-        nb = nbformat.read(args.file, as_version=4)
-        nb.cells = args.cells
+        status = 'ok'
         try:
+            logging.info(args.json)
+            nb = nbformat.read(args.file, as_version=4)
+            nb.cells = json.loads(args.json, object_hook=NotebookNode)
             nbformat.validate(nb)
             nbformat.write(nb, args.file)
         except nbformat.validator.NotebookValidationError:
-            logging.warning(f'notebook {args.file} is invalid')
-
+            logging.error(f'notebook {args.file} is invalid')
+            status = 'error'
+        except Exception:
+            logging.error(f'write failed:\n' + traceback.format_exc())
+            status = 'error'
+        finally:
+            sys.stdout.flush()
+            sys.stdout.write(json.dumps({'status': status}) + "\n")
 
 if __name__ == "__main__":
     main()

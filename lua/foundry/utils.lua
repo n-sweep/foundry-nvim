@@ -35,4 +35,20 @@ function M.prep_vtext(text, spacer, char)
 end
 
 
+--- Get the currently selected lines in visual mode.
+--- @return string[] lines The selected lines
+function M.get_selected_lines()
+    local vstart = vim.fn.getpos("v")
+    local vend = vim.fn.getpos(".")
+
+    -- if the selection was made backward, flip start and end
+    if vstart[2] > vend[2] then
+        vend = vim.fn.getpos("v")
+        vstart = vim.fn.getpos(".")
+    end
+
+    return vim.fn.getline(vstart[2], vend[2])
+end
+
+
 return M

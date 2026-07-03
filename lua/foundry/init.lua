@@ -35,6 +35,8 @@ vim.api.nvim_create_user_command("FoundryExecuteStep", function(opts)
     core.step_cells(tonumber(opts.args))
 end, {})
 
+vim.api.nvim_create_user_command("FoundryOpen", core.open_cell_floating_window, {})
+
 
 -- navigation
 
@@ -85,6 +87,12 @@ local function set_keymaps(buf)
         silent = true,
     })
 
+    vim.keymap.set('n', '<leader>fo', ":FoundryOpen<CR>", {
+        desc = 'Foundry open cell output in a temporary buffer',
+        buffer = 0,
+        silent = true,
+    })
+
     vim.keymap.set({'n', 'v'}, '<leader>ft', test, {
         buffer = buf,
     })
@@ -114,9 +122,7 @@ vim.api.nvim_create_autocmd("BufWriteCmd", {
     group = "Foundry",
     pattern = "*.ipynb",
     callback = function(ev)
-        local lines = vim.api.nvim_buf_get_lines(ev.buf, 0, -1, false)
-        -- Write the buffer content back however you want
-        -- vim.fn.writefile(lines, ev.file)
+        core.save_notebook(ev.file)
         vim.bo[ev.buf].modified = false
     end,
 })

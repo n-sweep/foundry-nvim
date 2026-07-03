@@ -207,8 +207,6 @@ end
 --- Open a floating window displaying the cell's output.
 --- Window can be closed with 'q' or '<Esc>'.
 function M.open_cell_floating_window()
-    -- display the cell's output content in a floating window
-    -- `q` or `<ESC>` to close the floating window
 
     local cell = get_cell_under_cursor()
     if cell == nil then return end
