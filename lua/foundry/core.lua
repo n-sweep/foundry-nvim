@@ -122,6 +122,8 @@ end
 --- Clear the buffer and place the header and cells in the buffer
 --- @return nil
 function M.place_cells()
+    vim.api.nvim_buf_clear_namespace(0, M.ns, 0, -1)
+
     -- set the header
     vim.api.nvim_buf_set_lines(0, 0, -1, false, {'', ''})
     vim.api.nvim_buf_set_extmark(0, M.ns, 0, 0, {
@@ -252,6 +254,57 @@ function M.execute_cell_under_cursor()
 end
 
 
+--- delete the selected cell
+--- @return nil
+function M.delete_cell_under_cursor()
+    local cell = M.get_cell_under_cursor()
+    if cell == nil then return end
+
+    local idx
+    for i, v in ipairs(M.cell_order) do
+        if v == cell.id then
+            idx = i
+            break
+        end
+    end
+
+    table.remove(M.cell_order, idx)
+    M.cells[cell.id] = nil
+    M.place_cells()
+end
+
+
+--- create a new cell
+--- @param type string the type of cell to be created
+--- @param above? boolean whether to create the new cell above the current cell
+--- @return Cell|nil new_cell
+function M.create_cell(type, above)
+    local cell = M.get_cell_under_cursor()
+    if cell == nil then return end
+
+    local new_cell = Cell:new(M.ns, {
+        id = (vim.fn.system("uuidgen"):gsub("\n", "")),
+        cell_type = type,
+        source = '',
+        outputs = {},
+    })
+
+    local idx
+    for i, v in ipairs(M.cell_order) do
+        if v == cell.id then
+            idx = i + (above and 0 or 1)
+            break
+        end
+    end
+
+    table.insert(M.cell_order, idx, new_cell.id)
+    M.cells[new_cell.id] = new_cell
+    M.place_cells()
+
+    return cell
+end
+
+
 --- Open a floating window displaying the cell's output.
 --- Window can be closed with 'q' or '<Esc>'.
 --- @return nil
@@ -260,55 +313,70 @@ function M.open_cell_floating_window()
     local cell = M.get_cell_under_cursor()
     if cell == nil then return end
 
-    local lines, header, row, modifiable
     local buf = vim.api.nvim_create_buf(false, true)
     local nb_buf = vim.api.nvim_get_current_buf()
     local range_start, range_end = cell:get_range()
+    local lines, header, row, modifiable, border
+
     vim.api.nvim_buf_set_option(buf, 'bufhidden', 'wipe')
 
     if cell.type == 'markdown' then
-        lines = cell:get_input_from_buffer()
-        row, _ = cell:get_range()
+        row = range_start
         header = cell.header_txt
         modifiable = true
+        border = 'none'
+        lines = cell:get_input_from_buffer()
+        vim.api.nvim_buf_set_option(buf, "filetype", "markdown")
 
         -- save changes to markdown cells
         vim.api.nvim_create_autocmd('BufWipeout', {
             buffer = buf,
             callback = function()
                 local md_lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
+                for i, line in ipairs(md_lines) do md_lines[i] = '# ' .. line end
                 vim.api.nvim_buf_set_lines(nb_buf, range_start + 1, range_end, false, md_lines)
             end
         })
 
     else
-        lines = cell:get_output()
-        _, row = cell:get_range()
+        row = range_end - 1
         header = cell.output_txt
+        lines = cell:get_output()
         modifiable = false
-        row = row - 1
+        border = 'rounded'
     end
 
-    if #lines == 0 then
-        return
-    end
+    if #lines == 0 then return end
 
     vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
     vim.api.nvim_buf_set_option(buf, 'modifiable', modifiable)
 
-    vim.api.nvim_open_win(buf, true, {
+    local parent_win = vim.api.nvim_get_current_win()
+    local win = vim.api.nvim_open_win(buf, true, {
         relative = 'win',
         bufpos = { row, 0 },
-        width = vim.api.nvim_win_get_width(0),
-        height = math.min(#lines, math.ceil(vim.api.nvim_win_get_height(0) / 2)),
-        border = 'rounded',
+        width = vim.api.nvim_win_get_width(parent_win),
+        height = math.min(#lines, math.ceil(vim.api.nvim_win_get_height(parent_win) / 2)),
+        border = border,
         title = ' ' .. header .. ' '
     })
 
+    -- resize floating window on text change in markdown cells
+    -- (modifiable = false; ignored in code output cells)
+    vim.api.nvim_create_autocmd({'TextChanged', 'InsertLeave'}, {
+        buffer = buf,
+        callback = function()
+            local line_count = vim.api.nvim_buf_line_count(buf)
+            local max_height = math.ceil(vim.api.nvim_win_get_height(parent_win) / 2)
+            vim.api.nvim_win_set_config(win, { height = math.min(line_count, max_height) })
+        end,
+    })
+
     local opts = { noremap = true, silent = true }
-    for _, mode in ipairs({'n', 'v'}) do
-        vim.api.nvim_buf_set_keymap(buf, mode, '<Esc>', '<cmd>bd!<CR>', opts)
-        vim.api.nvim_buf_set_keymap(buf, mode, '<C-C>', '<cmd>bd!<CR>', opts)
+    for _, key in ipairs({'<Esc>', '<C-C>', '<leader>qq', '<leader>w'}) do
+        for _, mode in ipairs({'n', 'v'}) do
+            vim.api.nvim_buf_set_keymap(buf, mode, key, '<cmd>bd!<CR>', opts)
+        end
     end
 end
 

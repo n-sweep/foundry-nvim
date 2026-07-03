@@ -134,7 +134,13 @@ end
 --- @return table lines a table of strings containing the cell's input text
 function Cell:get_input_from_buffer()
     local s, e = self:get_range()
-    return vim.fn.getline(s + 2, e)  -- something something off-by-one
+    local lines = vim.fn.getline(s + 2, e)  -- something something off-by-one
+    if self.type == 'markdown' then
+        for i, line in ipairs(lines) do
+            lines[i] = line:gsub('^# ', '')
+        end
+    end
+    return lines
 end
 
 
@@ -218,6 +224,11 @@ function Cell:place_in_buffer(row)
 
     -- insert cell input lines into buffer
     local cell_input = vim.split(self.data.source, '\n')
+    if self.type == 'markdown' then
+        for i, line in ipairs(cell_input) do
+            cell_input[i] = '# ' .. line
+        end
+    end
     vim.api.nvim_buf_set_lines(0, -1, -1, false, cell_input)
     vim.api.nvim_buf_set_lines(0, -1, -1, false, {''})
 

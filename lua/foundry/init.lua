@@ -27,7 +27,7 @@ local core = require('foundry.core')
 vim.api.nvim_create_user_command("FoundryShutdown", core.stop_ipython, {})
 
 
--- cell execution
+-- cell actions
 
 vim.api.nvim_create_user_command("FoundryExecute", core.execute_cell_under_cursor, {})
 vim.api.nvim_create_user_command("FoundryExecuteStep", function(opts)
@@ -36,6 +36,11 @@ vim.api.nvim_create_user_command("FoundryExecuteStep", function(opts)
 end, {})
 
 vim.api.nvim_create_user_command("FoundryOpen", core.open_cell_floating_window, {})
+vim.api.nvim_create_user_command("FoundryCreateCell", function() core.create_cell('code') end, {})
+vim.api.nvim_create_user_command("FoundryCreateCellAbove", function() core.create_cell('code', true) end, {})
+vim.api.nvim_create_user_command("FoundryCreateMdCell", function() core.create_cell('markdown') end, {})
+vim.api.nvim_create_user_command("FoundryCreateMdCellAbove", function() core.create_cell('markdown', true) end, {})
+vim.api.nvim_create_user_command("FoundryDelete", core.delete_cell_under_cursor, {})
 
 
 -- navigation
@@ -53,7 +58,7 @@ vim.api.nvim_create_user_command("FoundryPrev", "FoundryStep -1", {})
 --- keymaps --------------------------------------------------------------------
 
 local function test()
-    local cell = core.get_cell_under_cursor()
+    reload()
 end
 
 
@@ -93,7 +98,7 @@ local function set_keymaps(buf)
         silent = true,
     })
 
-    vim.keymap.set({'n', 'v'}, '<leader>ft', test, {
+    vim.keymap.set({'n', 'v'}, '<leader>fr', test, {
         buffer = buf,
     })
 
@@ -108,8 +113,8 @@ vim.api.nvim_create_autocmd("BufReadCmd", {
     group = "Foundry",
     pattern = "*.ipynb",
     callback = function(ev)
-        vim.bo[ev.buf].buftype = "acwrite"
-        vim.bo[ev.buf].filetype = "python"
+        vim.api.nvim_buf_set_option(ev.buf, "buftype", "acwrite")
+        vim.api.nvim_buf_set_option(ev.buf, "filetype", "python")
         vim.api.nvim_buf_set_name(ev.buf, ev.file)
 
         core.load_notebook(ev.file)
