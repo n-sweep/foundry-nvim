@@ -1,5 +1,5 @@
--- local Logging = require('foundry.logging')
--- local logger = Logging:get_logger('foundry_logger')
+local Logging = require('foundry.logging')
+local logger = Logging:get_logger('foundry_logger')
 local utils = require('foundry.utils')
 
 --- local functions ------------------------------------------------------------

@@ -3,7 +3,7 @@ local M = {
     text = {'one two three', 'hello', 'goodbye'},
     ns = vim.api.nvim_create_namespace('foundry-nvim'),
     cells = {},
-    cell_order = {}
+    cell_order = {},
 }
 
 local Logging = require('foundry.logging')
@@ -12,6 +12,7 @@ local logger = Logging:get_logger('foundry_logger')
 local Cell = require('foundry.cell')
 local bridge = require('foundry.ipy_bridge')
 local utils = require('foundry.utils')
+local undo_redo = require('foundry.undo_redo')
 
 local pending_msg = ''
 
@@ -81,7 +82,13 @@ function M.load_notebook(file)
             M.cells[cell.id] = cell
             table.insert(M.cell_order, cell.id)
         end
+
+        -- place cells in buffer and ensure it's not undoable
+        local ul = vim.bo.undolevels
+        vim.bo.undolevels = -1
         M.place_cells()
+        vim.bo.undolevels = ul
+
     else
         logger:error('failed to read notebook: ' .. file)
     end
@@ -195,7 +202,7 @@ function M.get_cell_under_cursor()
     for _, cell_id in ipairs(M.cell_order) do
         local cell = M.cells[cell_id]
         local s, e = cell:get_range()
-        if e > row and row >= s then
+        if e >= row and row >= s then
             return cell
         end
     end
@@ -290,6 +297,15 @@ function M.delete_cell_under_cursor()
 
     table.remove(M.cell_order, idx)
     M.cells[cell.id] = nil
+
+    table.insert(undo_redo.undo_stack, {
+        type = 'delete',
+        cell = cell,
+        idx = idx,
+        next_cell_id = next_cell and next_cell.id or nil,
+        seq = vim.fn.undotree().seq_cur,
+    })
+    undo_redo.redo_stack = {}
 end
 
 
@@ -321,16 +337,15 @@ function M.create_cell(type, above)
 
     -- find the boundary row to insert at and the next cell (if any)
     local boundary_row, next_cell
+    local s, e = cell:get_range()
     if above then
         -- inserting above current cell: boundary is current cell's header row
-        local s, _ = cell:get_range()
         boundary_row = s
         next_cell = cell
     else
         -- inserting below current cell: boundary is current cell's output row
-        local _, e = cell:get_range()
         boundary_row = e
-        -- next_cell is the cell after the current one in cell_order
+
         -- idx now points to new_cell; idx+1 is the displaced next cell
         local next_id = M.cell_order[idx + 1]
         if next_id then next_cell = M.cells[next_id] end
@@ -339,7 +354,7 @@ function M.create_cell(type, above)
     -- place the new cell starting at the boundary row
     new_cell:place_in_buffer(boundary_row)
 
-    -- reposition next cell's header_id to new cell's output row and refresh its decorations
+    -- reposition next cell's header_id to new cell's output row and refresh its outputs
     if next_cell then
         local _, new_output_row = new_cell:get_range()
         vim.api.nvim_buf_set_extmark(0, M.ns, new_output_row, 0, {
@@ -348,12 +363,20 @@ function M.create_cell(type, above)
         next_cell:update_extmarks()
     end
 
+    table.insert(undo_redo.undo_stack, {
+        type = 'create',
+        cell = new_cell,
+        idx = idx,
+        next_cell_id = next_cell and next_cell.id or nil,
+        seq = vim.fn.undotree().seq_cur,
+    })
+    undo_redo.redo_stack = {}
+
     return new_cell
 end
 
 
 --- Open a floating window displaying the cell's output.
---- Window can be closed with 'q' or '<Esc>'.
 --- @return nil
 function M.open_cell_floating_window()
 

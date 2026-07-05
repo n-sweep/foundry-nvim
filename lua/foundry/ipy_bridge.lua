@@ -1,6 +1,6 @@
 ---@diagnostic disable: deprecated
 ---
-M = { handle = 0 }
+local M = { handle = 0 }
 
 local Logging = require('foundry.logging')
 local logger = Logging:get_logger('foundry_logger')
