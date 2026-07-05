@@ -7,6 +7,7 @@ function _G.reload()
     package.loaded['foundry.core'] = nil
     package.loaded['foundry.ipy_bridge'] = nil
     package.loaded['foundry.logging'] = nil
+    package.loaded['foundry.undo_redo'] = nil
     package.loaded['foundry.utils'] = nil
     dofile('/home/n/Repos/foundry-nvim/lua/foundry/init.lua')
 end

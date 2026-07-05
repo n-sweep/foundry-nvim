@@ -70,7 +70,7 @@ end
 function M.handle_undo(state)
     local entry = M.undo_stack[#M.undo_stack]
     if not entry then return end
-    if vim.fn.undotree().seq_cur ~= entry.seq - 1 then return end
+    if vim.fn.undotree().seq_cur ~= entry.seq_before then return end
     table.remove(M.undo_stack)
     table.insert(M.redo_stack, entry)
 
@@ -88,7 +88,7 @@ end
 function M.handle_redo(state)
     local entry = M.redo_stack[#M.redo_stack]
     if not entry then return end
-    if vim.fn.undotree().seq_cur ~= entry.seq then return end
+    if vim.fn.undotree().seq_cur ~= entry.seq_after then return end
     table.remove(M.redo_stack)
     table.insert(M.undo_stack, entry)
 
