@@ -17,7 +17,14 @@ in
   # https://devenv.sh/languages/
   languages = {
 
-    lua.enable = true;
+    lua = {
+      enable = true;
+      lsp.package = pkgs.lua-language-server.overrideAttrs (old: {
+        post_install = (old.postInstall or "") + ''
+          rm -rf $out/share/lua-language-server/meta/default\ utf8
+        '';
+      });
+    };
 
     python = {
       enable = true;
