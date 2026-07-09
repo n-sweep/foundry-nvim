@@ -1,6 +1,4 @@
 local M = {
-    title = 'welcome to foundry-nvim',
-    text = {'one two three', 'hello', 'goodbye'},
     ns = vim.api.nvim_create_namespace('foundry-nvim'),
     cells = {},
     cell_order = {},
@@ -67,14 +65,29 @@ function M.shutdown_kernel(bufn)
 end
 
 
+--- return the kernel info
+--- @param bufn number|nil Buffer number (defaults to current buffer)
+--- @return boolean success Whether the command was sent successfully
+function M.get_kernel_info(bufn)
+    return bridge.send_to_subprocess({ type = 'info', target = 'kernel' }, bufn)
+end
+
+
 --- calls to the python backend to read a jupyter notebook
 --- @param file string location of the notebook to be read
 --- @return nil
 function M.load_notebook(file)
-    local msg = { command = { 'read', file } }
+    local msg
+    if vim.fn.filereadable(file) == 1 then
+        msg = { command = { 'read', file } }
+    else
+        logger:info(file .. ' not found, creating...')
+        msg = { command = { 'create', file } }
+    end
+
     local result = bridge.run_python_command(msg, M.handle_kernel_message)
     if result then
-        logger:info(file .. ' read')
+        logger:info(file .. ' loaded')
         M.cells = {}
         M.cell_order = {}
         for _, data in ipairs(result.cells) do
@@ -126,18 +139,39 @@ function M.save_notebook(file)
 end
 
 
+--- Redraw the header
+--- @return nil
+function M.draw_header()
+    local title = 'Notebook: ' .. vim.api.nvim_buf_get_name(0)
+    local text = {'Loading...'}
+
+    if M.info then
+        text = {
+            'Python: ' .. M.info.language_info.version,
+            'IPython: ' .. M.info.implementation_version,
+            'Kernel ID: ' .. M.info.runtime.kernel_id,
+            'Connection File: ' .. M.info.runtime.connection_file,
+            'PID: ' .. M.info.runtime.kernel_pid,
+        }
+    end
+
+    M.header = vim.api.nvim_buf_set_extmark(0, M.ns, 0, 0, {
+        id = M.header,
+        virt_text = utils.prep_vtext(title),
+        virt_text_pos = 'overlay',
+        virt_lines = utils.prep_vtext(text, true),
+    })
+
+end
+
+
 --- Clear the buffer and place the header and cells in the buffer
 --- @return nil
 function M.place_cells()
     vim.api.nvim_buf_clear_namespace(0, M.ns, 0, -1)
-
-    -- set the header
     vim.api.nvim_buf_set_lines(0, 0, -1, false, {'', ''})
-    vim.api.nvim_buf_set_extmark(0, M.ns, 0, 0, {
-        virt_text = utils.prep_vtext(M.title),
-        virt_text_pos = 'overlay',
-        virt_lines = utils.prep_vtext(M.text, true),
-    })
+
+    M.draw_header()
 
     local prev_cell = nil
     for _, cell_id in ipairs(M.cell_order) do
@@ -173,9 +207,15 @@ function M.handle_kernel_message(_, data, _)
                         logger:info('ipython shutdown complete')
                         pending_msg = ''
                         return
+
                     elseif result.type == 'execution_result' then
                         local cell = M.cells[result.cell_id]
+                        cell.status = 'Done'
                         cell:update_extmarks(result)
+
+                    elseif result.type == 'info' then
+                        M.info = result
+                        M.draw_header()
                     end
 
                 else
@@ -202,7 +242,8 @@ function M.get_cell_under_cursor()
     for _, cell_id in ipairs(M.cell_order) do
         local cell = M.cells[cell_id]
         local s, e = cell:get_range()
-        if e >= row and row >= s then
+        if e > row and row >= s then
+            logger:info('cell found: ' .. cell.id)
             return cell
         end
     end
@@ -212,9 +253,10 @@ end
 
 --- step n cells from the current cell, with negative numbers moving backward
 --- @param n integer|nil the number of cells to step, default 1
+--- @param cell Cell|nil the cell under the cursor
 --- @return nil
-function M.step_cells(n)
-    local cell = M.get_cell_under_cursor()
+function M.step_cells(n, cell)
+    cell = cell or M.get_cell_under_cursor()
     local dest_cell
 
     -- if we are not currently in a cell, we must be at the beginning or
@@ -239,7 +281,7 @@ end
 
 
 --- send code in the cell under the cursor to the python kernel
---- @return nil
+--- @return Cell|nil cell the cell executed
 function M.execute_cell_under_cursor()
 
     if bridge.handle == 0 then
@@ -257,7 +299,11 @@ function M.execute_cell_under_cursor()
     local msg = { type = 'exec', code = code, cell_id = cell.id }
     local success = bridge.send_to_subprocess(msg)
 
-    logger:info(tostring(success))
+    cell.status = 'In Process...'
+
+    logger:info('cell ' .. cell.id .. ': ' .. tostring(success))
+
+    return cell
 end
 
 

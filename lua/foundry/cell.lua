@@ -82,6 +82,7 @@ function Cell:new(namespace, data)
         ns = namespace,
         data = data,
         status = 'On Hold',
+        exec_count = '...'
     }
 
     local mt = {
@@ -173,12 +174,12 @@ function Cell:update_extmarks(msg)
 
     if self.type == 'markdown' then
         -- markdown gets no output field
-        self.header_txt = '- [markdown]'
+        self.header_txt = '[markdown]'
 
     elseif self.type == 'code' then
         local cs = '[' .. tostring(self.exec_count) .. ']'
-        self.header_txt = 'In ' .. cs .. ' ' .. self.status
-        self.output_txt = 'Out ' .. cs
+        self.header_txt = 'In ' .. cs
+        self.output_txt = 'Out ' .. cs .. ' ' .. self.status
 
         -- truncate text if too long
         local max = 15 -- self.opts.display_max_lines

@@ -53,6 +53,11 @@ class Kernel:
             mid = self.client.kernel_info()
             msg = self._retrieve_messages(mid)
             self._info = msg['data']['content']
+            self._info['runtime'] = {
+                'connection_file': self.mgr.connection_file,
+                'kernel_id': self.mgr.kernel_id,
+                'kernel_pid': self.mgr.provisioner.pid,
+            }
 
         return self._info
 

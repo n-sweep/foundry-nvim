@@ -70,6 +70,9 @@ class KernelManager:
 
             self.write(output)
 
+        elif message["type"] == "info":
+            self.write({"type": "info", **kn.info})
+
         elif message["type"] == "restart":
             self.restart_kernel(kn)
 
