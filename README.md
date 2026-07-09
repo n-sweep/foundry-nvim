@@ -2,7 +2,7 @@
 
 > WARNING: this plugin is under active development and is not intended for use by anyone
 
-`foundry-nvim` is a plugin for editing Jupyter Notebooks inspired by predecessors such as [`molten-nvim`](https://github.com/benlubas/molten-nvim), [magma-nvim](https://github.com/dccsillag/magma-nvim), and [iron.nvim](https://github.com/Vigemus/iron.nvim)
+`foundry-nvim` is a plugin for editing Jupyter Notebooks inspired by predecessors such as [`molten-nvim`](https://github.com/benlubas/molten-nvim), [`magma-nvim`](https://github.com/dccsillag/magma-nvim), and [`iron.nvim`](https://github.com/Vigemus/iron.nvim)
 
 ## Installation
 
