@@ -1,6 +1,6 @@
 # `foundry-nvim`
 
-![Foundry](https://wiki.factorio.com/File:Foundry_entity_anim.gif)
+![Foundry](https://wiki.factorio.com/images/Foundry_entity_anim.gif)
 
 > WARNING: this plugin is under active development and is not intended for use by anyone
 
