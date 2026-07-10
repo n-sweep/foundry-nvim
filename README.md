@@ -1,10 +1,13 @@
 # `foundry-nvim`
 
-![Foundry](https://wiki.factorio.com/images/Foundry_entity_anim.gif)
-
 > WARNING: this plugin is under active development and is not intended for use by anyone
 
-`foundry-nvim` is a plugin for editing Jupyter Notebooks inspired by predecessors such as [`molten-nvim`](https://github.com/benlubas/molten-nvim), [`magma-nvim`](https://github.com/dccsillag/magma-nvim), and [`iron.nvim`](https://github.com/Vigemus/iron.nvim)
+![Foundry](https://wiki.factorio.com/images/Foundry_entity_anim.gif)
+
+`foundry-nvim` is a plugin for editing Jupyter Notebooks inspired by predecessors such as:
+- [`molten-nvim`](https://github.com/benlubas/molten-nvim)
+- [`magma-nvim`](https://github.com/dccsillag/magma-nvim)
+- [`iron.nvim`](https://github.com/Vigemus/iron.nvim)
 
 ## Installation
 
@@ -37,7 +40,7 @@ use {
 
 ```vim
 Plug 'n-sweep/foundry-nvim'
-lua require('foundry').setup({ keymap_func = func })
+lua require('foundry').setup({ ... })
 ```
 
 ### Setup
