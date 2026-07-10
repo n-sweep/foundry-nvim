@@ -213,6 +213,11 @@ function M.handle_kernel_message(_, data, _)
                         cell.status = 'Done'
                         cell:update_extmarks(result)
 
+                    elseif result.type == 'error' then
+                        local cell = M.cells[result.cell_id]
+                        cell.status = 'Error'
+                        cell:update_extmarks(result)
+
                     elseif result.type == 'info' then
                         M.info = result
                         M.draw_header()

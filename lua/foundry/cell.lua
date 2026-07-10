@@ -85,6 +85,10 @@ function Cell:new(namespace, data)
         exec_count = '...'
     }
 
+    if obj.data.id == nil then
+        obj.data.id = (vim.fn.system("uuidgen"):gsub("\n", ""))
+    end
+
     local mt = {
         -- getter
         __index = function(t, key)
@@ -155,6 +159,9 @@ function Cell:get_output()
             vim.list_extend(cell_output, text)
         elseif output.output_type == 'execute_result' then
             table.insert(cell_output, output.data['text/plain'])
+        elseif output.output_type == 'error' then
+            logger:error('PY: ' .. output.evalue)
+            vim.list_extend(cell_output, output.tb_clean)
         end
     end
     return cell_output
@@ -195,6 +202,7 @@ function Cell:update_extmarks(msg)
         -- add cell output content
         vim.list_extend(cell_output, lines)
     end
+    logger:info('cell_output built: ' .. tostring(#cell_output) .. ' lines')  -- deleteme
 
     -- update header
     local imark = vim.api.nvim_buf_get_extmark_by_id(0, self.ns, self.header_id, { details = true })
@@ -212,6 +220,7 @@ function Cell:update_extmarks(msg)
         virt_lines = utils.prep_vtext(cell_output, true),
         virt_lines_above = true,
     })
+    logger:info('update_extmarks done: ' .. self.id)  -- deleteme
 end
 
 

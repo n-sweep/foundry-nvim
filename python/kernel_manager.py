@@ -62,10 +62,13 @@ class KernelManager:
         kn = self.get(message["meta"])
 
         if message["type"] == "exec":
+            result = kn.execute(message["code"])
+            ok = result['status'] == 'ok'
+
             output = {
-                "type": "execution_result",
+                "type": "execution_result" if ok else "error",
                 "cell_id": message["cell_id"],
-                **kn.execute(message["code"])
+                **result
             }
 
             self.write(output)
@@ -117,7 +120,7 @@ class KernelManager:
         if "outputs" in message:
             message["outputs"] = handle_datetimes(message["outputs"])
 
-        sys.stdout.write(json.dumps(message) + "\n")
+        sys.stdout.write(json.dumps(message) + "\n\n")
         sys.stdout.flush()
 
     def shutdown_kernel(self, kn: Kernel) -> None:

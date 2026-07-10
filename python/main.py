@@ -5,6 +5,7 @@ import nbformat
 import sys
 import traceback
 
+from pathlib import Path
 from kernel_manager import KernelManager
 from nbformat.notebooknode import NotebookNode
 
@@ -63,16 +64,23 @@ def main():
         status = 'ok'
         try:
             logging.info(args.json)
-            nb = nbformat.read(args.file, as_version=4)
+            if Path(args.file).exists():
+                nb = nbformat.read(args.file, as_version=4)
+            else:
+                nb = nbformat.v4.new_notebook()
+
             nb.cells = json.loads(args.json, object_hook=NotebookNode)
             nbformat.validate(nb)
             nbformat.write(nb, args.file)
+
         except nbformat.validator.NotebookValidationError:
             logging.error(f'notebook {args.file} is invalid')
             status = 'error'
+
         except Exception:
             logging.error(f'write failed:\n' + traceback.format_exc())
             status = 'error'
+
         finally:
             sys.stdout.flush()
             sys.stdout.write(json.dumps({'status': status}) + "\n")

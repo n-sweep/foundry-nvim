@@ -36,13 +36,13 @@ def clean_traceback(tb: list) -> dict:
     Returns
     -------
     dict
-        Dictionary with 'text/plain' and 'text/ANSI' keys, each containing
+        Dictionary with 'tb_clean' and 'tb_ANSI' keys, each containing
         a list of traceback lines.
     """
     text = "\n".join(tb).replace("^@", "\n")
     output = {
-        "text/plain": strip_ansi(str(text)).split("\n"),
-        "text/ANSI": text.split("\n"),
+        "tb_clean": strip_ansi(str(text)).split("\n"),
+        "tb_ANSI": text.split("\n"),
     }
     return output
 
