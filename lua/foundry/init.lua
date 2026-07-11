@@ -97,24 +97,18 @@ vim.api.nvim_create_user_command("FoundryInfo", function()
     print(vim.fn.json_encode(core.info))
 end, {})
 
--- cell actions
-
 vim.api.nvim_create_user_command("FoundryExecute", core.execute_cell_under_cursor, {})
 vim.api.nvim_create_user_command("FoundryExecuteStep", function(opts)
     local cell = core.execute_cell_under_cursor()
     core.step_cells(tonumber(opts.args), cell)
 end, {})
 
-vim.api.nvim_create_user_command("FoundryOpen", core.open_cell_floating_window, {})
-vim.api.nvim_create_user_command("FoundryDelete", core.delete_cell_under_cursor, {})
-
 vim.api.nvim_create_user_command("FoundryCreateCell", function() core.create_cell('code') end, {})
 vim.api.nvim_create_user_command("FoundryCreateCellAbove", function() core.create_cell('code', true) end, {})
 vim.api.nvim_create_user_command("FoundryCreateMdCell", function() core.create_cell('markdown') end, {})
 vim.api.nvim_create_user_command("FoundryCreateMdCellAbove", function() core.create_cell('markdown', true) end, {})
-
-
--- navigation
+vim.api.nvim_create_user_command("FoundryOpen", core.open_cell_floating_window, {})
+vim.api.nvim_create_user_command("FoundryDelete", core.delete_cell_under_cursor, {})
 
 vim.api.nvim_create_user_command(
     "FoundryStep",
@@ -122,6 +116,17 @@ vim.api.nvim_create_user_command(
     { nargs = 1 }
 )
 
+vim.api.nvim_create_user_command(
+    "FoundryMove",
+    function(opts)
+        local n = tonumber(opts.args)
+        if n then core.move_cell(n) else return end
+    end,
+    { nargs = 1 }
+)
+
+vim.api.nvim_create_user_command("FoundryMoveUp", "FoundryMove -1", {})
+vim.api.nvim_create_user_command("FoundryMoveDown", "FoundryMove 1", {})
 vim.api.nvim_create_user_command("FoundryNext", "FoundryStep 1", {})
 vim.api.nvim_create_user_command("FoundryPrev", "FoundryStep -1", {})
 

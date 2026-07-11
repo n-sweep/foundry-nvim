@@ -89,6 +89,22 @@ function Cell:new(namespace, data)
         obj.data.id = (vim.fn.system("uuidgen"):gsub("\n", ""))
     end
 
+    if obj.data.metadata == nil then
+        obj.data.metadata = vim.empty_dict()
+    end
+
+    if obj.data.cell_type ~= 'markdown' then
+
+        if obj.data.outputs == nil then
+            obj.data.outputs = {}
+        end
+
+        if obj.data.execution_count == nil then
+            obj.data.execution_count = 0
+        end
+
+    end
+
     local mt = {
         -- getter
         __index = function(t, key)
@@ -99,8 +115,9 @@ function Cell:new(namespace, data)
                 return t.data.cell_type
 
             elseif key == 'exec_count' then
-                if data['execution_count'] ~= vim.NIL then
-                    return data['execution_count']
+                local ec = data['execution_count']
+                if ec ~= vim.NIL or ec < 1 then
+                    return ec
                 else
                     return '...'
                 end
@@ -173,7 +190,9 @@ end
 function Cell:update_extmarks(msg)
     if msg ~= nil then
         self.exec_count = msg.execution_count
-        self.data.outputs = msg.outputs
+        if self.data.cell_type ~= 'markdown' then
+            self.data.outputs = msg.outputs
+        end
     end
 
     -- generate cell header and output

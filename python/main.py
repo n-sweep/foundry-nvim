@@ -75,6 +75,7 @@ def main():
 
         except nbformat.validator.NotebookValidationError:
             logging.error(f'notebook {args.file} is invalid')
+            logging.error(traceback.format_exc())
             status = 'error'
 
         except Exception:

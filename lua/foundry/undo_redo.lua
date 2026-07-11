@@ -78,6 +78,10 @@ function M.handle_undo(state)
         remove_cell(entry, state)
     elseif entry.type == 'delete' then
         restore_cell(entry, state)
+    elseif entry.type == 'move' then
+        state.cell_order[entry.idx], state.cell_order[entry.new_idx] =
+            state.cell_order[entry.new_idx], state.cell_order[entry.idx]
+        require('foundry.core').place_cells()
     end
 end
 
@@ -96,6 +100,10 @@ function M.handle_redo(state)
         restore_cell(entry, state)
     elseif entry.type == 'delete' then
         remove_cell(entry, state)
+    elseif entry.type == 'move' then
+        state.cell_order[entry.idx], state.cell_order[entry.new_idx] =
+            state.cell_order[entry.new_idx], state.cell_order[entry.idx]
+        require('foundry.core').place_cells()
     end
 end
 

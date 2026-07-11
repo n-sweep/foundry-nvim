@@ -368,13 +368,26 @@ end
 --- @return Cell|nil new_cell
 function M.create_cell(type, above)
     local cell = M.get_cell_under_cursor()
-    if cell == nil then return end
+
+    -- handle cursor being on the pre-first or post-last buffer line
+    if cell == nil then
+        local row = vim.api.nvim_win_get_cursor(0)[1] - 1
+        local first_cell = M.cells[M.cell_order[1]]
+        if first_cell == nil then return end
+        local start, _ = first_cell:get_range()
+        if row < start then -- cursor is at the top of the buffer
+            cell = first_cell
+            above = true
+        else -- bottom of buffer
+            cell = M.cells[M.cell_order[#M.cell_order]]
+            above = false
+        end
+    end
 
     local new_cell = Cell:new(M.ns, {
         id = (vim.fn.system("uuidgen"):gsub("\n", "")),
         cell_type = type,
         source = '',
-        outputs = {},
     })
 
     local idx
@@ -392,14 +405,12 @@ function M.create_cell(type, above)
     local boundary_row, next_cell
     local s, e = cell:get_range()
     if above then
-        -- inserting above current cell: boundary is current cell's header row
+        -- inserting above current cell
         boundary_row = s
         next_cell = cell
     else
-        -- inserting below current cell: boundary is current cell's output row
+        -- inserting below current cell
         boundary_row = e
-
-        -- idx now points to new_cell; idx+1 is the displaced next cell
         local next_id = M.cell_order[idx + 1]
         if next_id then next_cell = M.cells[next_id] end
     end
@@ -427,7 +438,55 @@ function M.create_cell(type, above)
     })
     undo_redo.redo_stack = {}
 
+    vim.api.nvim_win_set_cursor(0, { boundary_row + 2, 0 })
+
     return new_cell
+end
+
+
+--- Move the cell under the cursor up or down by one position
+--- @param direction integer 1 for down, -1 for up
+--- @return nil
+function M.move_cell(direction)
+    local cell = M.get_cell_under_cursor()
+    if cell == nil then return end
+
+    local idx
+    for i, id in ipairs(M.cell_order) do
+        if id == cell.id then idx = i; break end
+    end
+
+    local new_idx = idx + direction
+    if new_idx < 1 or new_idx > #M.cell_order then return end
+
+    local seq_before = vim.fn.undotree().seq_cur
+
+    M.cell_order[idx], M.cell_order[new_idx] = M.cell_order[new_idx], M.cell_order[idx]
+
+    -- sync live buffer content into cell.data.source before redraw
+    for _, id in ipairs(M.cell_order) do
+        local c = M.cells[id]
+        local lines = c:get_input_from_buffer()
+        c.data.source = table.concat(lines, '\n')
+    end
+
+    local ul = vim.bo.undolevels
+    vim.bo.undolevels = -1
+    M.place_cells()
+    vim.bo.undolevels = ul
+
+    table.insert(undo_redo.undo_stack, {
+        type       = 'move',
+        cell       = cell,
+        idx        = idx,
+        new_idx    = new_idx,
+        seq_before = seq_before,
+        seq_after  = vim.fn.undotree().seq_cur,
+    })
+    undo_redo.redo_stack = {}
+
+    local s, _ = cell:get_range()
+    vim.api.nvim_win_set_cursor(0, { s + 1, 0 })
 end
 
 
