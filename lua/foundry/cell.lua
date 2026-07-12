@@ -227,7 +227,6 @@ function Cell:update_extmarks(msg)
         -- add cell output content
         vim.list_extend(cell_output, lines)
     end
-    logger:info('cell_output built: ' .. tostring(#cell_output) .. ' lines')  -- deleteme
 
     -- update header
     local imark = vim.api.nvim_buf_get_extmark_by_id(0, self.ns, self.header_id, { details = true })
@@ -245,7 +244,6 @@ function Cell:update_extmarks(msg)
         virt_lines = utils.prep_vtext(cell_output, true),
         virt_lines_above = true,
     })
-    logger:info('update_extmarks done: ' .. self.id)  -- deleteme
 end
 
 

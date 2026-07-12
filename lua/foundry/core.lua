@@ -299,6 +299,9 @@ function M.execute_cell_under_cursor()
         return
     end
 
+    cell.status = 'In Process...'
+    cell:update_extmarks()
+
     local lines = cell:get_input_from_buffer()
     local code = table.concat(lines, '\n')
     local msg = { type = 'exec', code = code, cell_id = cell.id }
@@ -312,15 +315,15 @@ function M.execute_cell_under_cursor()
 end
 
 
---- delete the selected cell
+--- delete a cell by cell id
+--- @param cell_id string
 --- @return nil
-function M.delete_cell_under_cursor()
-    local cell = M.get_cell_under_cursor()
-    if cell == nil then return end
+function M.delete_cell_by_id(cell_id)
+    local cell = M.cells[cell_id]
 
     local idx
     for i, v in ipairs(M.cell_order) do
-        if v == cell.id then
+        if v == cell_id then
             idx = i
             break
         end
@@ -328,11 +331,8 @@ function M.delete_cell_under_cursor()
 
     local s, e = cell:get_range()
     local next_cell = M.cells[M.cell_order[idx + 1]]
-
-    -- delete the cell's input lines (between header row exclusive and output row exclusive)
-    -- the header row (s) is the shared boundary with the previous cell; keep it
-    -- delete from s+1 up to and including e (the output/boundary row with next cell)
     local seq_before = vim.fn.undotree().seq_cur
+
     vim.api.nvim_buf_set_lines(0, s + 1, e + 1, false, {})
 
     -- delete the cell's extmarks
@@ -348,7 +348,7 @@ function M.delete_cell_under_cursor()
     end
 
     table.remove(M.cell_order, idx)
-    M.cells[cell.id] = nil
+    M.cells[cell_id] = nil
 
     table.insert(undo_redo.undo_stack, {
         type = 'delete',
@@ -359,6 +359,16 @@ function M.delete_cell_under_cursor()
         seq_after = vim.fn.undotree().seq_cur,
     })
     undo_redo.redo_stack = {}
+end
+
+
+--- delete the selected cell
+--- @return nil
+function M.delete_cell_under_cursor()
+    local cell = M.get_cell_under_cursor()
+    if cell == nil then return end
+
+    M.delete_cell_by_id(cell.id)
 end
 
 

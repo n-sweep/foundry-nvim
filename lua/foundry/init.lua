@@ -77,20 +77,45 @@ vim.api.nvim_create_autocmd("BufWriteCmd", {
     end,
 })
 
--- shut down kernel if buffer exits
--- shut down ipython if vim exits
-vim.api.nvim_create_autocmd({'BufDelete', 'ExitPre'}, {
+vim.api.nvim_create_autocmd({"BufDelete", "ExitPre"}, {
     group = "Foundry",
     pattern = "*.ipynb",
-    -- buffer must be passed in manually
     callback = function()
         core.stop_ipython()
         vim.wait(10000, function() return core.ipython_down end, 100)
     end
 })
 
+-- redraw headers on resize
+vim.api.nvim_create_autocmd({"VimResized", "WinResized"}, {
+    group = "Foundry",
+    pattern = "*.ipynb",
+    callback = function()
+        core.draw_header()
+        for _, cell in pairs(core.cells) do
+            cell:update_extmarks()
+        end
+    end
+})
+
+-- delete cells whose content is removed
+vim.api.nvim_create_autocmd({"TextChanged", "TextChangedI"}, {
+    group = "Foundry",
+    pattern = "*.ipynb",
+    callback = function()
+        for _, cell in pairs(core.cells) do
+            if cell.empty then
+                core.delete_cell_by_id(cell.id)
+            end
+        end
+    end
+})
+
 
 --- usercommands ---------------------------------------------------------------
+
+vim.api.nvim_create_user_command("FoundryTest", function()
+end, {})
 
 vim.api.nvim_create_user_command("FoundryShutdown", core.stop_ipython, {})
 vim.api.nvim_create_user_command("FoundryInfo", function()
@@ -108,8 +133,8 @@ vim.api.nvim_create_user_command("FoundryCreateCellAbove", function() core.creat
 vim.api.nvim_create_user_command("FoundryCreateMdCell", function() core.create_cell('markdown') end, {})
 vim.api.nvim_create_user_command("FoundryCreateMdCellAbove", function() core.create_cell('markdown', true) end, {})
 vim.api.nvim_create_user_command("FoundryOpen", core.open_cell_floating_window, {})
-vim.api.nvim_create_user_command("FoundryYankOutput", core.yank_cell(true), {})
-vim.api.nvim_create_user_command("FoundryYankInput", core.yank_cell(false), {})
+vim.api.nvim_create_user_command("FoundryYankOutput", function() core.yank_cell(true) end, {})
+vim.api.nvim_create_user_command("FoundryYankInput", function() core.yank_cell(false) end, {})
 vim.api.nvim_create_user_command("FoundryDelete", core.delete_cell_under_cursor, {})
 
 vim.api.nvim_create_user_command(

@@ -70,7 +70,17 @@ end
 function M.handle_undo(state)
     local entry = M.undo_stack[#M.undo_stack]
     if not entry then return end
-    if vim.fn.undotree().seq_cur ~= entry.seq_before then return end
+
+    -- undo sequences become desynchronized when a cell is deleted by an autocommand recognizing
+    -- that it is empty (zero lines)
+    local seq_cur =  vim.fn.undotree().seq_cur
+    local desync = entry.seq_before == entry.seq_after
+    if desync then
+        if seq_cur >= entry.seq_before then return end
+    else
+        if seq_cur ~= entry.seq_before then return end
+    end
+
     table.remove(M.undo_stack)
     table.insert(M.redo_stack, entry)
 
@@ -93,6 +103,7 @@ function M.handle_redo(state)
     local entry = M.redo_stack[#M.redo_stack]
     if not entry then return end
     if vim.fn.undotree().seq_cur ~= entry.seq_after then return end
+
     table.remove(M.redo_stack)
     table.insert(M.undo_stack, entry)
 
