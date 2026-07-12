@@ -77,5 +77,10 @@ require('foundry').setup({keymap_func = func})
 | `FoundryNext`              | Move cursor to the next cell                       |
 | `FoundryPrev`              | Move cursor to the previous cell                   |
 | `FoundryStep {n}`          | Move cursor n cells (negative = backward)          |
+| `FoundryYankOutput`        | Yank the output of the current cell                |
+| `FoundryYankInput`         | Yank the input of the current cell                 |
+| `FoundryMoveUp`            | Move the current cell up                           |
+| `FoundryMoveDown`          | Move the current cell down                         |
+| `FoundryMove {n}`          | Move the current cell n positions                  |
 | `FoundryShutdown`          | Shut down the kernel manager                       |
 | `FoundryInfo`              | Print kernel info                                  |

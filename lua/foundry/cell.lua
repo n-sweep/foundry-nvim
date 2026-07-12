@@ -169,19 +169,19 @@ end
 --- Get the cell's output content from the underlying jupyter data
 --- @return table lines a table of strings containing the cell's output text
 function Cell:get_output()
-    local cell_output = {}
+    local lines = {}
     for _, output in ipairs(self.data.outputs) do
         if output.output_type == 'stream' then
             local text = vim.split(output.text, '\n', {trimempty = true})
-            vim.list_extend(cell_output, text)
+            vim.list_extend(lines, text)
         elseif output.output_type == 'execute_result' then
-            table.insert(cell_output, output.data['text/plain'])
+            table.insert(lines, output.data['text/plain'])
         elseif output.output_type == 'error' then
             logger:error('PY: ' .. output.evalue)
-            vim.list_extend(cell_output, output.tb_clean)
+            vim.list_extend(lines, output.tb_clean)
         end
     end
-    return cell_output
+    return lines
 end
 
 

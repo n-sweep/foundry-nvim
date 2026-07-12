@@ -108,6 +108,8 @@ vim.api.nvim_create_user_command("FoundryCreateCellAbove", function() core.creat
 vim.api.nvim_create_user_command("FoundryCreateMdCell", function() core.create_cell('markdown') end, {})
 vim.api.nvim_create_user_command("FoundryCreateMdCellAbove", function() core.create_cell('markdown', true) end, {})
 vim.api.nvim_create_user_command("FoundryOpen", core.open_cell_floating_window, {})
+vim.api.nvim_create_user_command("FoundryYankOutput", core.yank_cell(true), {})
+vim.api.nvim_create_user_command("FoundryYankInput", core.yank_cell(false), {})
 vim.api.nvim_create_user_command("FoundryDelete", core.delete_cell_under_cursor, {})
 
 vim.api.nvim_create_user_command(

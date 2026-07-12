@@ -489,6 +489,27 @@ function M.move_cell(direction)
     vim.api.nvim_win_set_cursor(0, { s + 1, 0 })
 end
 
+--- yank the cell's output or input to the unnamed and system clipboard registers
+--- @param output boolean|nil if true, yank the cell's output (default); if false, yank the cell's input
+--- @return nil
+function M.yank_cell(output)
+    local cell = M.get_cell_under_cursor()
+    if cell == nil then return end
+
+    local lines
+    if output == nil then output = true end
+    if output then
+        lines = cell:get_output()
+    else
+        lines = cell:get_input_from_buffer()
+    end
+
+    local text = table.concat(lines, '\n')
+    for _, reg in ipairs({'"', "+"}) do
+        vim.fn.setreg(reg, text)
+    end
+end
+
 
 --- Open a floating window displaying the cell's output.
 --- @return nil
