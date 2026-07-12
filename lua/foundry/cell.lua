@@ -82,7 +82,7 @@ function Cell:new(namespace, data)
         ns = namespace,
         data = data,
         status = 'On Hold',
-        exec_count = '...'
+        exec_count = '…'
     }
 
     if obj.data.id == nil then
@@ -119,8 +119,13 @@ function Cell:new(namespace, data)
                 if ec ~= vim.NIL or ec < 1 then
                     return ec
                 else
-                    return '...'
+                    return '…'
                 end
+
+            elseif key == 'empty' then
+                -- check if cell has zero lines
+                local s, e = t:get_range()
+                return (e - s) < 2
 
             -- elseif key == '' then
             end
@@ -171,15 +176,16 @@ end
 function Cell:get_output()
     local lines = {}
     for _, output in ipairs(self.data.outputs) do
+        local text
         if output.output_type == 'stream' then
-            local text = vim.split(output.text, '\n', {trimempty = true})
-            vim.list_extend(lines, text)
+            text = vim.split(output.text, '\n', {trimempty = true})
         elseif output.output_type == 'execute_result' then
-            table.insert(lines, output.data['text/plain'])
+            text = vim.split(output.data['text/plain'], '\n', {trimempty = true})
         elseif output.output_type == 'error' then
+            text = output.tb_clean
             logger:error('PY: ' .. output.evalue)
-            vim.list_extend(lines, output.tb_clean)
         end
+        if text then vim.list_extend(lines, text) end
     end
     return lines
 end
