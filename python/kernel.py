@@ -3,7 +3,6 @@ import nbformat
 import zmq
 
 from jupyter_client.manager import KernelManager as KM
-from utils import clean_traceback
 
 
 class Kernel:
@@ -103,10 +102,9 @@ class Kernel:
             case 'error':
                 output['status'] = 'error'
                 fmt_output = nbformat.v4.output_from_msg(msg)
-                fmt_output.update(clean_traceback(fmt_output['traceback']))
                 output['outputs'].append(fmt_output)
 
-                logging.error(f"{'\n'.join(fmt_output['tb_ANSI'])}")
+                logging.error(f"{'\n'.join(fmt_output['traceback'])}")
 
             case _:
                 logging.warning(f"Unhandled IOPUB message type: {msg['header']['msg_type']}")

@@ -182,7 +182,9 @@ function Cell:get_output()
         elseif output.output_type == 'execute_result' then
             text = vim.split(output.data['text/plain'], '\n', {trimempty = true})
         elseif output.output_type == 'error' then
-            text = output.tb_clean
+            local raw = table.concat(output.traceback, '\n')
+            local clean = vim.fn.substitute(raw, '\27\\[[0-9;]*m', '', 'g')
+            text = vim.split(clean, '\n', { trimempty = true })
             logger:error('PY: ' .. output.evalue)
         end
         if text then vim.list_extend(lines, text) end
