@@ -149,6 +149,7 @@ function M.draw_header()
         text = {
             'Python: ' .. M.info.language_info.version,
             'IPython: ' .. M.info.implementation_version,
+            'venv: ' .. bridge.venv,
             'Kernel ID: ' .. M.info.runtime.kernel_id,
             'Connection File: ' .. M.info.runtime.connection_file,
             'PID: ' .. M.info.runtime.kernel_pid,

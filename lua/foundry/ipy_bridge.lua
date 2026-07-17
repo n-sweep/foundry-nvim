@@ -1,12 +1,19 @@
 ---@diagnostic disable: deprecated
----
-local M = { handle = 0 }
 
 local Logging = require('foundry.logging')
 local logger = Logging:get_logger('foundry_logger')
+local utils = require('foundry.utils')
 
-local current_file = debug.getinfo(1, "S").source:sub(2)
-local plugin_root = vim.fs.root(current_file, {".git"})
+local M = {
+    handle = 0,
+    plugin_root = vim.fs.root(
+        debug.getinfo(1, "S").source:sub(2),
+        {".git"}
+    ),
+    venv_names = { '.venv', 'venv', 'env' },
+}
+
+M.venv = utils.find_venv(M.venv_names)
 
 
 -- local functions -------------------------------------------------------------
@@ -68,6 +75,7 @@ function M.send_to_subprocess(tbl, bufn)
         pid = vim.fn.getpid(),
         buf = bufn,
         file = vim.api.nvim_buf_get_name(bufn),
+        venv = M.venv,
     }
 
     local json = vim.fn.json_encode(tbl)
@@ -88,8 +96,8 @@ end
 --- @return table|integer|nil result async calls return a handle (int); others return a result (table); failures return nil
 function M.run_python_command(args, on_result)
     local job = {
-        'python3', '-u',
-        plugin_root .. '/python/main.py',
+        M.venv, '-u',
+        M.plugin_root .. '/python/main.py',
         vim.fn.getpid(),
         vim.fn.stdpath('state'),  -- log file location
         unpack(args.command)

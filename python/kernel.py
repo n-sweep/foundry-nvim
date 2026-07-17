@@ -2,6 +2,7 @@ import logging
 import nbformat
 import zmq
 
+from server import push_image
 from jupyter_client.manager import KernelManager as KM
 
 
@@ -15,6 +16,9 @@ class Kernel:
         self._info = None
 
         self.mgr = KM()
+        venv = metadata.get('venv')
+        if venv:
+            self.mgr.kernel_spec.argv[0] = venv
         self.mgr.start_kernel()
 
         self.client = self.mgr.client()
@@ -96,8 +100,13 @@ class Kernel:
 
             case 'execute_result' | 'stream' | 'display_data':
                 fmt_output = nbformat.v4.output_from_msg(msg)
-                logging.info(f"output message: {fmt_output}")
+                logging.info(f"output message: {msg_type}")
                 output['outputs'].append(fmt_output)
+
+                # display_data
+                img = fmt_output.get('data', {}).get('image/png')
+                if img is not None:
+                    push_image(img)
 
             case 'error':
                 output['status'] = 'error'

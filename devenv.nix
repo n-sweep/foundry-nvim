@@ -6,12 +6,14 @@ in
   # https://devenv.sh/basics/
   env = {
     DEVSHELL = pyproject.project.name;
+    UV_PROJECT_ENVIRONMENT = "${builtins.toString ./.devenv/state/venv}";
   };
 
   # https://devenv.sh/packages/
   packages = with pkgs; [
     git
     luajitPackages.vusted
+    stdenv.cc.cc.lib
   ];
 
   # https://devenv.sh/languages/
@@ -50,6 +52,7 @@ in
 
   # https://devenv.sh/basics/
   enterShell = ''
+    export LD_LIBRARY_PATH="${pkgs.stdenv.cc.cc.lib}/lib:$LD_LIBRARY_PATH"
     hello         # Run scripts directly
     git --version # Use packages
   '';

@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>foundry-nvim output</title>
+    <style>
+        body {
+            margin: 0;
+            background: #1e1e1e;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            min-height: 100vh;
+            padding: 2rem;
+            box-sizing: border-box;
+        }
+        #output {
+            max-width: 100%;
+            display: block;
+        }
+        #placeholder {
+            color: #666;
+            font-family: monospace;
+            margin-top: 2rem;
+        }
+    </style>
+</head>
+<body>
+    <div>
+        <img id="output" src="" alt="" style="display: none;" />
+        <p id="placeholder">Waiting for output...</p>
+    </div>
+
+    <script>
+        const img = document.getElementById('output');
+        const placeholder = document.getElementById('placeholder');
+
+        const es = new EventSource('/stream');
+
+        es.onmessage = (e) => {
+            img.src = 'data:image/png;base64,' + e.data;
+            img.style.display = 'block';
+            placeholder.style.display = 'none';
+        };
+
+        es.onerror = () => {
+            placeholder.textContent = 'Connection lost. Reload to reconnect.';
+            placeholder.style.display = 'block';
+        };
+    </script>
+</body>
+</html>

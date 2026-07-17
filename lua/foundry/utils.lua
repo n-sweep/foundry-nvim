@@ -1,6 +1,33 @@
 M = {}
 
 
+--- find a python virtualenv binary for the current project
+--- searches the git repo root first, then recursively; falls back to system python3
+--- @param venv_names string[] venv directory names to search for
+--- @return string python path to the Python binary
+function M.find_venv(venv_names)
+    local root = vim.fs.root(vim.fn.getcwd(), { '.git' }) or vim.fn.getcwd()
+
+    for _, name in ipairs(venv_names) do
+        local python = root .. '/' .. name .. '/bin/python3'
+        if vim.fn.executable(python) == 1 then
+            return python
+        end
+    end
+
+    for _, name in ipairs(venv_names) do
+        local matches = vim.fn.glob(
+            root .. '/{,.}**/' .. name .. '/bin/python3',
+            false,
+            true
+        )
+        if #matches > 0 then return matches[1] end
+    end
+
+    return 'python3'
+end
+
+
 local function pad(text_width, char)
     local win_width = vim.api.nvim_win_get_width(0)
     local sign_width = vim.fn.getwininfo(vim.fn.win_getid())[1].textoff

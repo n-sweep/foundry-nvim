@@ -6,6 +6,7 @@ import sys
 import traceback
 
 from pathlib import Path
+from server import start_server
 from kernel_manager import KernelManager
 from nbformat.notebooknode import NotebookNode
 
@@ -41,6 +42,7 @@ def main():
         )
 
     if args.command == "kernel":
+        start_server()
         km = KernelManager(args.pid)
         try:
             km.read()
