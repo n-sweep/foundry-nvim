@@ -147,12 +147,9 @@ function M.draw_header()
 
     if M.info then
         text = {
+            'venv: ' .. bridge.venv,
             'Python: ' .. M.info.language_info.version,
             'IPython: ' .. M.info.implementation_version,
-            'venv: ' .. bridge.venv,
-            'Kernel ID: ' .. M.info.runtime.kernel_id,
-            'Connection File: ' .. M.info.runtime.connection_file,
-            'PID: ' .. M.info.runtime.kernel_pid,
         }
     end
 

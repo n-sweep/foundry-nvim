@@ -14,6 +14,7 @@ local M = {
 }
 
 M.venv = utils.find_venv(M.venv_names)
+logger:info('venv: ' .. M.venv)
 
 
 -- local functions -------------------------------------------------------------

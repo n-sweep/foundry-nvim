@@ -6,6 +6,19 @@ M = {}
 --- @param venv_names string[] venv directory names to search for
 --- @return string python path to the Python binary
 function M.find_venv(venv_names)
+    -- check environment vars first
+    local env_vars = { 'VIRTUAL_ENV', 'UV_PROJECT_ENVIRONMENT', 'CONDA_PREFIX' }
+    for _, var in ipairs(env_vars) do
+        local env = os.getenv(var)
+        if env then
+            local python = env .. '/bin/python3'
+            if vim.fn.executable(python) == 1 then
+                return python
+            end
+        end
+    end
+
+    -- fall back on a venv at the root of the git repo
     local root = vim.fs.root(vim.fn.getcwd(), { '.git' }) or vim.fn.getcwd()
 
     for _, name in ipairs(venv_names) do
@@ -13,15 +26,6 @@ function M.find_venv(venv_names)
         if vim.fn.executable(python) == 1 then
             return python
         end
-    end
-
-    for _, name in ipairs(venv_names) do
-        local matches = vim.fn.glob(
-            root .. '/{,.}**/' .. name .. '/bin/python3',
-            false,
-            true
-        )
-        if #matches > 0 then return matches[1] end
     end
 
     return 'python3'
