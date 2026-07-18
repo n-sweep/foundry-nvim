@@ -55,7 +55,7 @@ class Kernel:
     def info(self) -> dict:
         if self._info is None:
             mid = self.client.kernel_info()
-            msg = self._retrieve_messages(mid)
+            msg = self._retrieve_messages(mid, {})
             self._info = msg['data']['content']
             self._info['runtime'] = {
                 'connection_file': self.mgr.connection_file,
@@ -100,13 +100,15 @@ class Kernel:
 
             case 'execute_result' | 'stream' | 'display_data':
                 fmt_output = nbformat.v4.output_from_msg(msg)
-                logging.info(f"output message: {msg_type}")
                 output['outputs'].append(fmt_output)
+
+                logging.info(f"output message: {msg_type}")
+                logging.info(output)
 
                 # display_data
                 img = fmt_output.get('data', {}).get('image/png')
                 if img is not None:
-                    push_image(img)
+                    push_image(img, output['data']['message'])
 
             case 'error':
                 output['status'] = 'error'
@@ -143,12 +145,14 @@ class Kernel:
         # logging.info(f"Stdin msg: {msg}")
         logging.warning(f"Unhandled STDIN message type: {msg['header']['msg_type']}")
 
-    def _retrieve_messages(self, exe_id: str|None = None) -> dict:
+    def _retrieve_messages(self, exe_id: str, message: dict) -> dict:
         """ """
         output = {
             "outputs": [],
             "status": 'ok',
-            "data": {},
+            "data": {
+                "message": message
+            },
         }
 
         self._awaiting_reply = True
@@ -167,15 +171,13 @@ class Kernel:
 
         return output
 
-    def execute(self, *args, **kwargs) -> dict:
+    def execute(self, message: dict) -> dict:
         """Execute code in the kernel and collect all outputs.
 
         Parameters
         ----------
-        *args
-            Positional arguments passed to the kernel client's execute method.
-        **kwargs
-            Keyword arguments passed to the kernel client's execute method.
+        message
+            the message sent from lua to be executed
 
         Returns
         -------
@@ -184,10 +186,10 @@ class Kernel:
         """
 
         # no `input()` allowed
-        kwargs.setdefault('allow_stdin', False)
+        # kwargs.setdefault('allow_stdin', False)
 
-        msg_id = self.client.execute(*args, **kwargs)
-        return self._retrieve_messages(msg_id)
+        msg_id = self.client.execute(message['code'], allow_stdin=False)
+        return self._retrieve_messages(msg_id, message)
 
     def shutdown(self) -> None:
         """Shut down the kernel and stop all communication channels."""

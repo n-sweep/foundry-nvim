@@ -62,7 +62,7 @@ class KernelManager:
         kn = self.get(message["meta"])
 
         if message["type"] == "exec":
-            result = kn.execute(message["code"])
+            result = kn.execute(message)
             ok = result['status'] == 'ok'
 
             output = {

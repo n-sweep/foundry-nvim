@@ -28,6 +28,7 @@
 </head>
 <body>
     <div>
+        <p id="title"></p>
         <img id="output" src="" alt="" style="display: none;" />
         <p id="placeholder">Waiting for output...</p>
     </div>
@@ -39,13 +40,15 @@
         const es = new EventSource('/stream');
 
         es.onmessage = (e) => {
-            img.src = 'data:image/png;base64,' + e.data;
+            const stream_data = JSON.parse(e.data)
+            img.src = 'data:image/png;base64,' + stream_data.img_b64;
             img.style.display = 'block';
             placeholder.style.display = 'none';
+            title.style.display = stream_data.message.data.cell_id
         };
 
         es.onerror = () => {
-            placeholder.textContent = 'Connection lost. Reload to reconnect.';
+            placeholder.textContent = 'Connection to Foundry-NVIM lost.';
             placeholder.style.display = 'block';
         };
     </script>
