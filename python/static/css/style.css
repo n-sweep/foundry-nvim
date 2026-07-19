@@ -1,0 +1,21 @@
+body {
+    margin: 0;
+    background: #1e1e1e;
+    display: flex;
+    justify-content: center;
+    align-items: flex-start;
+    min-height: 100vh;
+    padding: 2rem;
+    box-sizing: border-box;
+}
+
+#output {
+    max-width: 100%;
+    display: block;
+}
+
+#placeholder {
+    color: #666;
+    font-family: monospace;
+    margin-top: 2rem;
+}

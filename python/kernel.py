@@ -53,6 +53,7 @@ class Kernel:
 
     @property
     def info(self) -> dict:
+        """Return ipython info"""
         if self._info is None:
             mid = self.client.kernel_info()
             msg = self._retrieve_messages(mid, {})
@@ -67,6 +68,7 @@ class Kernel:
 
     @property
     def banner(self) -> str:
+        """Return ipython banner"""
         sep = "=" * 80
         file = f"Kernel: {self.file} ({self.vim_pid})"
         exc = f"Execution Count: {self.execution_count + 1}"
@@ -75,10 +77,12 @@ class Kernel:
         return "\n".join(output)
 
     def _on_control(self, msg: dict, output: dict) -> None:
+        """Handle control messages"""
         # logging.info(f"Control msg: {msg}")
         logging.warning(f"Unhandled CNTRL message type: {msg['header']['msg_type']}")
 
     def _on_iopub(self, msg: dict, output: dict) -> None:
+        """Handle IOpub messages"""
 
         msg_type = msg['header']['msg_type']
         match msg_type:
@@ -122,6 +126,7 @@ class Kernel:
                 # logging.info(f"IOPub msg: {msg}")
 
     def _on_shell(self, msg: dict, output: dict) -> None:
+        """Handle shell messages"""
         msg_type = msg['header']['msg_type']
 
         if msg_type.endswith('_reply'):
@@ -142,11 +147,12 @@ class Kernel:
                 # logging.info(f"IOPub msg: {msg}")
 
     def _on_stdin(self, msg: dict, output: dict) -> None:
+        """Handle stdin messages"""
         # logging.info(f"Stdin msg: {msg}")
         logging.warning(f"Unhandled STDIN message type: {msg['header']['msg_type']}")
 
     def _retrieve_messages(self, exe_id: str, message: dict) -> dict:
-        """ """
+        """Retreive messages from the kernel sockets"""
         output = {
             "outputs": [],
             "status": 'ok',

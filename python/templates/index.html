@@ -3,27 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>foundry-nvim output</title>
+    <title>Foundry-NVIM Plot Viewer</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32'%3E%3Ctext x='0' y='25' font-size='30'%3E%F0%9F%93%88%3C/text%3E%3C/svg%3E" />
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
     <style>
-        body {
-            margin: 0;
-            background: #1e1e1e;
-            display: flex;
-            justify-content: center;
-            align-items: flex-start;
-            min-height: 100vh;
-            padding: 2rem;
-            box-sizing: border-box;
-        }
-        #output {
-            max-width: 100%;
-            display: block;
-        }
-        #placeholder {
-            color: #666;
-            font-family: monospace;
-            margin-top: 2rem;
-        }
     </style>
 </head>
 <body>
@@ -33,24 +16,6 @@
         <p id="placeholder">Waiting for output...</p>
     </div>
 
-    <script>
-        const img = document.getElementById('output');
-        const placeholder = document.getElementById('placeholder');
-
-        const es = new EventSource('/stream');
-
-        es.onmessage = (e) => {
-            const stream_data = JSON.parse(e.data)
-            img.src = 'data:image/png;base64,' + stream_data.img_b64;
-            img.style.display = 'block';
-            placeholder.style.display = 'none';
-            title.style.display = stream_data.message.data.cell_id
-        };
-
-        es.onerror = () => {
-            placeholder.textContent = 'Connection to Foundry-NVIM lost.';
-            placeholder.style.display = 'block';
-        };
-    </script>
+    <script src="{{ url_for('static', filename='js/plot.js') }}"></script>
 </body>
 </html>
