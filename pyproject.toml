@@ -17,6 +17,7 @@ dependencies = [
     "pynvim>=0.5.2",
     "pyperclip>=1.9.0",
     "pytest>=9.0.2",
+    "waitress>=3.0.2",
 ]
 
 [tool.pytest.ini_options]

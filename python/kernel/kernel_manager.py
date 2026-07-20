@@ -2,7 +2,7 @@ import json
 import logging
 import sys
 
-from kernel import Kernel
+from kernel.kernel import Kernel
 from datetime import datetime
 
 
@@ -42,22 +42,26 @@ class KernelManager:
 
     Parameters
     ----------
-    pid : str
-        The process ID of the managing process.
+    data : dict
+        Initialization data containing 'pid' (the managing process ID) and
+        'server' (the plot server URL, or None if unavailable).
 
     Attributes
     ----------
     pid : str
-        The process ID.
+        The process ID of the managing process.
+    image_server : str | None
+        URL of the plot server, or None if it failed to start.
     kernels : dict
         Dictionary mapping file paths to Kernel instances.
     """
 
-    def __init__(self, pid: str) -> None:
-        self.pid = pid
+    def __init__(self, data: dict) -> None:
+        self.pid = data['pid']
+        self.image_server = data['server']
         self.kernels = {}
 
-        logging.info(f"Kernel manager {pid} initialized")
+        logging.info(f"Kernel manager {self.pid} initialized")
 
     def get(self, metadata: dict) -> Kernel:
         """Get or create a kernel for the specified file.
@@ -74,7 +78,7 @@ class KernelManager:
         """
         fn = metadata["file"]
         if fn not in self.kernels:
-            self.kernels[fn] = Kernel(metadata)
+            self.kernels[fn] = Kernel(metadata, self.image_server)
         return self.kernels[fn]
 
     def handle_kernel_message(self, message: dict) -> None:
@@ -134,15 +138,14 @@ class KernelManager:
             self.handle_kernel_message(req)
 
     def write(self, message: dict) -> None:
-        """Write a dictionary to stdout as JSON.
-
-        Handles datetime serialization for messages containing Jupyter message
-        data.
+        """Write a message to stdout as a JSON string.
 
         Parameters
         ----------
         message : dict
-            The message dictionary to serialize and write.
+            The message dictionary to serialize and write. If the message contains
+            an 'outputs' key, datetime objects within it are converted to ISO format
+            strings before serialization.
         """
         # datetime objects are not json serializable
         if "outputs" in message:
@@ -175,7 +178,7 @@ class KernelManager:
             The kernel instance to restart.
         """
         kn.shutdown()
-        self.kernels[kn.file] = Kernel(kn.metadata)
+        self.kernels[kn.file] = Kernel(kn.metadata, self.image_server)
         logging.info(f"Kernel {kn.file} restarted")
 
     def shutdown_all(self) -> None:

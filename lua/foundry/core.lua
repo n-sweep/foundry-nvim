@@ -147,9 +147,10 @@ function M.draw_header()
 
     if M.info then
         text = {
-            'venv: ' .. bridge.venv,
+            'VENV: ' .. bridge.venv,
             'Python: ' .. M.info.language_info.version,
             'IPython: ' .. M.info.implementation_version,
+            'Plot Server: ' .. M.info.image_server,
         }
     end
 

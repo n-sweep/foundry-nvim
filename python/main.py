@@ -6,27 +6,28 @@ import sys
 import traceback
 
 from pathlib import Path
-from server import start_plot_server
-from kernel_manager import KernelManager
 from nbformat.notebooknode import NotebookNode
+from kernel.kernel_manager import KernelManager
+from server.run import start_plot_server
 
 
 def start_server(args):
     """Start the kernel manager and plot viewing server"""
 
+    server = None
+    try:
+        server = start_plot_server()
+    except Exception as e:
+        logging.error(f'Plot server failed to start: {e}')
+
     # start kernel manager
-    km = KernelManager(args.pid)
+    km = KernelManager({'pid': args.pid, 'server': server})
     try:
         km.read()
     except Exception:
         logging.error(traceback.format_exc())
     finally:
         km.shutdown_all()
-
-    try:
-        start_plot_server()
-    except Exception as e:
-        logging.error(f'Plot server failed to start: {e}')
 
 
 def read_notebook(args):
@@ -41,7 +42,6 @@ def write_notebook(args):
     """Write the provided notebook data to the provided file"""
     status = 'ok'
     try:
-        logging.info(args.json)
         if Path(args.file).exists():
             nb = nbformat.read(args.file, as_version=4)
         else:
@@ -95,7 +95,7 @@ def main():
         "kernel": {"func": start_server},
 
         "read": {
-            "func": start_server,
+            "func": read_notebook,
             "args": ["file"]
         },
 

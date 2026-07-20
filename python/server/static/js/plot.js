@@ -1,14 +1,21 @@
 const img = document.getElementById('output');
 const placeholder = document.getElementById('placeholder');
+const title = document.getElementById('title');
 
 const es = new EventSource('/stream');
 
 es.onmessage = (e) => {
     const stream_data = JSON.parse(e.data)
-    img.src = 'data:image/png;base64,' + stream_data.img_b64;
+
+    if (stream_data.mime === 'image/svg+xml') {
+        img.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(stream_data.img);
+    } else {
+        img.src = `data:${stream_data.mime};base64,` + stream_data.img;
+    }
+
     img.style.display = 'block';
     placeholder.style.display = 'none';
-    title.style.display = stream_data.message.data.cell_id
+    title.textContent = stream_data.message.cell_id
 };
 
 es.onerror = () => {

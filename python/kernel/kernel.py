@@ -2,15 +2,17 @@ import logging
 import nbformat
 import zmq
 
-from server import push_image
+from server.run import push_image
 from jupyter_client.manager import KernelManager as KM
 
 
 class Kernel:
-    def __init__(self, metadata: dict) -> None:
+    def __init__(self, metadata: dict, image_server: str|None = None) -> None:
         self.metadata = metadata
         self.vim_pid = metadata["pid"]
         self.file = metadata["file"]
+        self.image_server = image_server
+
         self.execution_count = 0
         self.status = "idle"
         self._info = None
@@ -63,6 +65,7 @@ class Kernel:
                 'kernel_id': self.mgr.kernel_id,
                 'kernel_pid': self.mgr.provisioner.pid,
             }
+            self._info['image_server'] = self.image_server
 
         return self._info
 
@@ -107,12 +110,13 @@ class Kernel:
                 output['outputs'].append(fmt_output)
 
                 logging.info(f"output message: {msg_type}")
-                logging.info(output)
 
                 # display_data
-                img = fmt_output.get('data', {}).get('image/png')
-                if img is not None:
-                    push_image(img, output['data']['message'])
+                for mime in ('image/png', 'image/jpeg', 'image/gif', 'image/svg+xml'):
+                    img = fmt_output.get('data', {}).get(mime)
+                    if img is not None:
+                        push_image(img, mime, output['data']['message'])
+                        break
 
             case 'error':
                 output['status'] = 'error'
