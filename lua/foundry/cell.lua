@@ -226,8 +226,12 @@ function Cell:update_extmarks(msg)
 
         table.insert(cell_output, self.output_txt)
 
-        -- add cell output content
-        vim.list_extend(cell_output, lines)
+        -- when the cell is currently working, outputs from the previous cell remain until
+        -- execution is complete; we don't want to display outputs while in process
+        if self.status ~= 'In Process...' then
+            vim.list_extend(cell_output, lines)
+        end
+
     end
 
     -- update header

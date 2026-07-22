@@ -306,8 +306,6 @@ function M.execute_cell_under_cursor()
     local msg = { type = 'exec', code = code, cell_id = cell.id }
     local success = bridge.send_to_subprocess(msg)
 
-    cell.status = 'In Process...'
-
     logger:info('cell ' .. cell.id .. ': ' .. tostring(success))
 
     return cell
