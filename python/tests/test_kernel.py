@@ -3,7 +3,7 @@ import pytest
 
 from nbclient import NotebookClient
 
-from python.kernel import Kernel
+from python.jupy_tools.kernel import Kernel
 
 
 @pytest.fixture(scope="function")
@@ -32,7 +32,13 @@ def notebook():
 
 def test_kernel_execution(kernel, notebook):
     for cell in notebook.cells:
-        code = cell['source']
-        result = kernel.execute(code)
+
+        message = {
+            'type': 'exec',
+            'code': cell['source'],
+            'cell_id': cell['id']
+        }
+
+        result = kernel.execute(message)
         assert result["status"] == "ok"
         assert result["outputs"] == cell["outputs"]

@@ -6,7 +6,7 @@ in
   # https://devenv.sh/basics/
   env = {
     DEVSHELL = pyproject.project.name;
-    UV_PROJECT_ENVIRONMENT = "${builtins.toString ./.devenv/state/venv}";
+    # UV_PROJECT_ENVIRONMENT = "${builtins.toString ./.devenv/state/venv}";
   };
 
   # https://devenv.sh/packages/
@@ -68,6 +68,9 @@ in
     echo "Running tests"
     git --version | grep --color=auto "${pkgs.git.version}"
     pytest ./python/tests/
+
+    VUSTED_ARGS="--cmd 'set rtp+=.'"
+    vusted ./lua/tests/
   '';
 
   # https://devenv.sh/git-hooks/
