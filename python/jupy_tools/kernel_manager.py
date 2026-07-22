@@ -2,7 +2,7 @@ import json
 import logging
 import sys
 
-from kernel.kernel import Kernel
+from jupy_tools.kernel import Kernel
 from datetime import datetime
 
 
