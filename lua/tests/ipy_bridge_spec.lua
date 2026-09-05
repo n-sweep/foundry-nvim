@@ -2,6 +2,7 @@ local core = require("foundry.core")
 local bridge = require("foundry.ipy_bridge")
 
 describe("IPython Bridge", function()
+
     it("reads a notebook", function()
         core.load_notebook('python/test.ipynb')
         assert.is_not_nil(core.cells)
@@ -15,4 +16,12 @@ describe("IPython Bridge", function()
 
         vim.wait(5000, function() return bridge.handle == 0 end, 100)
     end)
+
+    it("can handle uninstalled packages", function()
+        bridge.send_to_subprocess({command = {
+            type = 'test',
+            package = 'nbformat'
+        }})
+    end)
+
 end)

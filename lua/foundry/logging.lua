@@ -15,7 +15,7 @@ Logging.__index = Logging
 --- @return Logging logger The logger instance
 function Logging:new(filename, name)
     local obj = {
-        filename = filename or os.date('%Y-%m-%d_%H:%M:%S') .. '.log',
+        filename = filename or './',
         name = name
     }
 

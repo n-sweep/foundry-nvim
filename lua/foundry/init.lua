@@ -127,6 +127,7 @@ vim.api.nvim_create_user_command("FoundryExecuteStep", function(opts)
     local cell = core.execute_cell_under_cursor()
     core.step_cells(tonumber(opts.args), cell)
 end, {})
+vim.api.nvim_create_user_command("FoundryInterrupt", core.interrupt_kernel, {})
 
 vim.api.nvim_create_user_command("FoundryCreateCell", function() core.create_cell('code') end, {})
 vim.api.nvim_create_user_command("FoundryCreateCellAbove", function() core.create_cell('code', true) end, {})

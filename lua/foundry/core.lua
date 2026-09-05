@@ -42,7 +42,7 @@ end
 
 --- Stops the entire Python subprocess and all kernels
 --- Note: M.handle will be reset to 0 by the on_exit callback when subprocess terminates
---- @return boolean success Whether the shutdown command was sent successfully
+--- @return boolean success
 --- @return nil
 function M.stop_ipython()
     return bridge.send_to_subprocess({ type = 'shutdown', target = 'all' })
@@ -50,26 +50,33 @@ end
 
 
 --- Restarts the kernel for the specified buffer
---- @param bufn number|nil Buffer number (defaults to current buffer)
---- @return boolean success Whether the restart command was sent successfully
+--- @param bufn number|nil buffer number
+--- @return boolean success
 function M.restart_kernel(bufn)
      return bridge.send_to_subprocess({ type = 'restart' }, bufn)
 end
 
 
 --- Shuts down the kernel for the specified buffer
---- @param bufn number|nil Buffer number (defaults to current buffer)
---- @return boolean success Whether the shutdown command was sent successfully
+--- @param bufn number|nil buffer number
+--- @return boolean success
 function M.shutdown_kernel(bufn)
     return bridge.send_to_subprocess({ type = 'shutdown', target = 'kernel' }, bufn)
 end
 
 
 --- return the kernel info
---- @param bufn number|nil Buffer number (defaults to current buffer)
---- @return boolean success Whether the command was sent successfully
+--- @param bufn number|nil buffer number
+--- @return boolean success
 function M.get_kernel_info(bufn)
     return bridge.send_to_subprocess({ type = 'info', target = 'kernel' }, bufn)
+end
+
+
+--- interrupt a running kernel
+--- @return boolean success
+function M.interrupt_kernel()
+    return bridge.send_to_subprocess({ type = 'interrupt', target = 'kernel' })
 end
 
 
