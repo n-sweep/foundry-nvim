@@ -1,8 +1,14 @@
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from main import StreamIO
+
 import logging
 import nbformat
 import zmq
 
-from server.run import push_image
 from jupyter_client.manager import KernelManager as KM
 
 
@@ -105,7 +111,13 @@ class Kernel:
             case 'execute_input':
                 logging.info(f"input received: {repr(msg['content']['code'])}")
 
-            case 'execute_result' | 'stream' | 'display_data':
+            case 'execute_result' | 'stream':
+                fmt_output = nbformat.v4.output_from_msg(msg)
+                output['outputs'].append(fmt_output)
+
+                logging.info(f"output message: {msg_type}")
+
+            case 'display_data':
                 fmt_output = nbformat.v4.output_from_msg(msg)
                 output['outputs'].append(fmt_output)
 
@@ -114,9 +126,17 @@ class Kernel:
                 # display_data
                 for mime in ('image/png', 'image/jpeg', 'image/gif', 'image/svg+xml'):
                     img = fmt_output.get('data', {}).get(mime)
-                    if img is not None:
-                        push_image(img, mime, output['data']['message'])
+
+                    if img is None:
+                        continue
+
+                    if self.image_server is None:
+                        logging.warning(f"no image server available for {mime} data")
                         break
+
+                    from server.run import push_image
+                    push_image(img, mime, output['data']['message'])
+                    break
 
             case 'error':
                 output['status'] = 'error'
@@ -211,3 +231,125 @@ class Kernel:
         self.status = "down"
         self.client.stop_channels()
         self.mgr.shutdown_kernel()
+
+
+class KernelManager:
+    """Provides a central manager for creating, accessing, and controlling
+    multiple Jupyter kernels, typically one per file.
+
+    Parameters
+    ----------
+    data : dict
+        Initialization data containing 'pid' (the managing process ID) and
+        'server' (the plot server URL, or None if unavailable).
+
+    Attributes
+    ----------
+    pid : str
+        The process ID of the managing process.
+    image_server : str | None
+        URL of the plot server, or None if it failed to start.
+    kernels : dict
+        Dictionary mapping file paths to Kernel instances.
+    """
+
+    def __init__(self, io_handler: StreamIO, data: dict) -> None:
+        self.pid = data['pid']
+        self.image_server = data['server']
+        self.kernels = {}
+        self.write = io_handler.write
+        io_handler.add_hook(self.handle_kernel_message)
+
+        logging.info(f"Kernel manager {self.pid} initialized")
+
+    def get(self, metadata: dict) -> Kernel:
+        """Get or create a kernel for the specified file.
+
+        Parameters
+        ----------
+        metadata : dict
+            Metadata containing 'file' key and other kernel initialization data.
+
+        Returns
+        -------
+        Kernel
+            The kernel instance associated with the file.
+        """
+        fn = metadata["file"]
+        if fn not in self.kernels:
+            self.kernels[fn] = Kernel(metadata, self.image_server)
+        return self.kernels[fn]
+
+    def handle_kernel_message(self, message: dict) -> None:
+        """Handle kernel-specific messages.
+
+        Processes execution, restart, and shutdown requests for kernels.
+
+        Parameters
+        ----------
+        message : dict
+            Message containing 'type', 'meta', and other request data.
+        """
+        kn = self.get(message["meta"])
+
+        if message["type"] == "exec":
+            result = kn.execute(message)
+            ok = result['status'] == 'ok'
+
+            output = {
+                "type": "execution_result" if ok else "error",
+                "cell_id": message["cell_id"],
+                **result
+            }
+
+            self.write(output)
+
+        elif message["type"] == "info":
+            self.write({"type": "info", **kn.info})
+
+        elif message["type"] == "interrupt":
+            logging.info(f'>>>> INTERRUPT')
+            kn.mgr.interrupt_kernel()
+
+        elif message["type"] == "restart":
+            self.restart_kernel(kn)
+
+        elif message["type"] == "shutdown":
+            self.shutdown_kernel(kn)
+
+    def shutdown_kernel(self, kn: Kernel) -> None:
+        """Shut down the specified kernel and remove it from the manager.
+
+        Parameters
+        ----------
+        kn : Kernel
+            The kernel instance to shut down.
+        """
+        kn.shutdown()
+        del self.kernels[kn.file]
+        logging.info(f"Kernel {kn.file} shut down")
+
+    def restart_kernel(self, kn: Kernel) -> None:
+        """Restart the specified kernel.
+
+        Shuts down the existing kernel and creates a new one with the same
+        metadata.
+
+        Parameters
+        ----------
+        kn : Kernel
+            The kernel instance to restart.
+        """
+        kn.shutdown()
+        self.kernels[kn.file] = Kernel(kn.metadata, self.image_server)
+        logging.info(f"Kernel {kn.file} restarted")
+
+    def shutdown_all(self) -> None:
+        """Shut down all kernels and write confirmation to stdout."""
+        for kn in self.kernels.values():
+            kn.shutdown()
+        self.kernels = {}
+        self.write({"type": "shutdown_all", "status": "ok"})
+        logging.info(f"Kernel manager {self.pid} shut down")
+        logging.info("-" * 19)
+        logging.info(" ")

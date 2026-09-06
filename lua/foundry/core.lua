@@ -2,7 +2,11 @@ local M = {
     ns = vim.api.nvim_create_namespace('foundry-nvim'),
     cells = {},
     cell_order = {},
+    ready = false,
+    on_ready = nil
 }
+
+local pending_msg = ''
 
 local Logging = require('foundry.logging')
 local logger = Logging:get_logger('foundry_logger')
@@ -12,72 +16,8 @@ local bridge = require('foundry.ipy_bridge')
 local utils = require('foundry.utils')
 local undo_redo = require('foundry.undo_redo')
 
-local pending_msg = ''
 
-
---- buffer functions -----------------------------------------------------------
-
-
---- starts a new subprocess running the python kernel manager
---- @return nil
-function M.start_ipython()
-    if bridge.handle > 0 then
-        logger:warn('kernel already started')
-        return nil
-    end
-
-    local args = {
-        command = {'kernel'},
-        stream = true,
-    }
-    local result = bridge.run_python_command(args, M.handle_kernel_message)
-    if result then
-        bridge.handle = result
-        logger:info('kernel started')
-    else
-        logger:error('kernel failed to start')
-    end
-end
-
-
---- Stops the entire Python subprocess and all kernels
---- Note: M.handle will be reset to 0 by the on_exit callback when subprocess terminates
---- @return boolean success
---- @return nil
-function M.stop_ipython()
-    return bridge.send_to_subprocess({ type = 'shutdown', target = 'all' })
-end
-
-
---- Restarts the kernel for the specified buffer
---- @param bufn number|nil buffer number
---- @return boolean success
-function M.restart_kernel(bufn)
-     return bridge.send_to_subprocess({ type = 'restart' }, bufn)
-end
-
-
---- Shuts down the kernel for the specified buffer
---- @param bufn number|nil buffer number
---- @return boolean success
-function M.shutdown_kernel(bufn)
-    return bridge.send_to_subprocess({ type = 'shutdown', target = 'kernel' }, bufn)
-end
-
-
---- return the kernel info
---- @param bufn number|nil buffer number
---- @return boolean success
-function M.get_kernel_info(bufn)
-    return bridge.send_to_subprocess({ type = 'info', target = 'kernel' }, bufn)
-end
-
-
---- interrupt a running kernel
---- @return boolean success
-function M.interrupt_kernel()
-    return bridge.send_to_subprocess({ type = 'interrupt', target = 'kernel' })
-end
+--- notebook functions ---------------------------------------------------------
 
 
 --- calls to the python backend to read a jupyter notebook
@@ -92,7 +32,7 @@ function M.load_notebook(file)
         msg = { command = { 'create', file } }
     end
 
-    local result = bridge.run_python_command(msg, M.handle_kernel_message)
+    local result = bridge.run_python_command(msg)
     if result then
         logger:info(file .. ' loaded')
         M.cells = {}
@@ -135,7 +75,7 @@ function M.save_notebook(file)
     end
 
     local msg = { command = { 'write', json, file } }
-    local result = bridge.run_python_command(msg, M.handle_kernel_message)
+    local result = bridge.run_python_command(msg)
 
     if result then
         logger:info(file .. ' written')
@@ -144,6 +84,9 @@ function M.save_notebook(file)
     end
 
 end
+
+
+--- buffer functions -----------------------------------------------------------
 
 
 --- Redraw the header
@@ -157,8 +100,11 @@ function M.draw_header()
             'VENV: ' .. bridge.venv,
             'Python: ' .. M.info.language_info.version,
             'IPython: ' .. M.info.implementation_version,
-            'Plot Server: ' .. M.info.image_server,
         }
+        local is = M.info.image_server
+        if is ~= vim.NIL then
+            table.insert(text, 'Plot Server: ' .. is)
+        end
     end
 
     M.header = vim.api.nvim_buf_set_extmark(0, M.ns, 0, 0, {
@@ -190,54 +136,6 @@ function M.place_cells()
 
         cell:place_in_buffer(row)
         prev_cell = cell
-    end
-end
-
-
---- Callback for subprocess stdout - parses JSON messages and routes to result handler
---- @param data table Lines of output from subprocess
---- @return nil
-function M.handle_kernel_message(_, data, _)
-    for _, line in ipairs(data) do
-        if line ~= '' then
-            pending_msg = pending_msg .. line
-        else
-            if pending_msg ~= '' then
-
-                local ok, result = pcall(vim.fn.json_decode, pending_msg)
-                if ok then
-                    logger:info('kernel message received')
-
-                    if result.type == 'shutdown_all' then
-                        M.ipython_down = true
-                        logger:info('ipython shutdown complete')
-                        pending_msg = ''
-                        return
-
-                    elseif result.type == 'execution_result' then
-                        local cell = M.cells[result.cell_id]
-                        cell.status = 'Done'
-                        cell:update_extmarks(result)
-
-                    elseif result.type == 'error' then
-                        local cell = M.cells[result.cell_id]
-                        cell.status = 'Error'
-                        cell:update_extmarks(result)
-
-                    elseif result.type == 'info' then
-                        M.info = result
-                        M.draw_header()
-                    end
-
-                else
-                    logger:error('failed to parse: ' .. pending_msg)
-                end
-
-            else
-                logger:warn('handle_kernel_message: no message found')
-            end
-            pending_msg = ''
-        end
     end
 end
 
@@ -597,6 +495,126 @@ function M.open_cell_floating_window()
             vim.api.nvim_buf_set_keymap(buf, mode, key, '<cmd>bd!<CR>', opts)
         end
     end
+end
+
+
+--- main funcitons -------------------------------------------------------------
+
+
+--- Callback for subprocess stdout - parses JSON messages and routes to result handler
+--- @param data table Lines of output from subprocess
+--- @return nil
+function M.handle_kernel_message(_, data, _)
+    for _, line in ipairs(data) do
+        if line ~= '' then
+            pending_msg = pending_msg .. line
+        else
+            if pending_msg ~= '' then
+                local ok, result = pcall(vim.fn.json_decode, pending_msg)
+                if ok then
+                    logger:info('kernel message received: ' .. result.type)
+
+                    if result.type == 'pong' then
+                        M.ready = true
+
+                    elseif result.type == 'info' then
+                        M.info = result
+                        M.draw_header()
+
+                    elseif result.type == 'execution_result' then
+                        local cell = M.cells[result.cell_id]
+                        cell.status = 'Done'
+                        cell:update_extmarks(result)
+
+                    elseif result.type == 'shutdown_all' then
+                        M.ready = false
+                        logger:info('ipython shutdown complete')
+                        pending_msg = ''
+                        return
+
+                    elseif result.type == 'error' then
+                        local cell = M.cells[result.cell_id]
+                        cell.status = 'Error'
+                        cell:update_extmarks(result)
+                    end
+
+                else
+                    logger:error('failed to parse: ' .. pending_msg)
+                end
+            end
+            pending_msg = ''
+        end
+    end
+end
+
+
+--- starts a new subprocess running the python kernel manager
+--- @return nil
+function M.start()
+
+    -- set up message handler
+    if bridge.message_handler == nil then
+        bridge.message_handler = M.handle_kernel_message
+    end
+
+    if bridge.handle > 0 then
+        logger:warn('kernel already started; startup aborted')
+        return
+    end
+
+    local args = { command = {'start'}, stream = true, }
+    local result = bridge.run_python_command(args)
+
+    if result then
+        bridge.handle = result.handle
+        bridge.send_to_subprocess({ type = 'ping' })
+        return
+    end
+
+    logger:error('kernel failed to start')
+end
+
+
+--- module commands ------------------------------------------------------------
+
+
+--- Stops the entire Python subprocess and all kernels
+--- Note: M.handle will be reset to 0 by the on_exit callback when subprocess terminates
+--- @return boolean success
+--- @return nil
+function M.stop_ipython()
+    return bridge.send_to_subprocess({ type = 'shutdown', target = 'all' })
+end
+
+
+--- Restarts the kernel for the specified buffer
+--- @param bufn number|nil buffer number
+--- @return boolean success
+function M.restart_kernel(bufn)
+     return bridge.send_to_subprocess({ type = 'restart' }, bufn)
+end
+
+
+--- Shuts down the kernel for the specified buffer
+--- @param bufn number|nil buffer number
+--- @return boolean success
+function M.shutdown_kernel(bufn)
+    return bridge.send_to_subprocess({ type = 'shutdown', target = 'kernel' }, bufn)
+end
+
+
+--- interrupt a running kernel
+--- @return boolean success
+function M.interrupt_kernel()
+    return bridge.send_to_subprocess({ type = 'interrupt', target = 'kernel' })
+end
+
+
+--- return the kernel info
+--- @param bufn number|nil buffer number
+--- @return boolean success
+function M.get_kernel_info(bufn)
+    return bridge.send_to_subprocess({ type = 'info', target = 'kernel' }, bufn)
 end
 
 

@@ -6,6 +6,7 @@ local utils = require('foundry.utils')
 
 local M = {
     handle = 0,
+    message_handler = nil,
     plugin_root = vim.fs.root(
         debug.getinfo(1, "S").source:sub(2),
         {".git"}
@@ -25,6 +26,7 @@ local function kernel_on_stderr(_, data, _)
     for _, line in ipairs(data) do
         if line ~= '' then
             logger:error("subprocess stderr: " .. line)
+            vim.notify("stderr: " .. line, vim.log.levels.ERROR)
         end
     end
 end
@@ -39,13 +41,10 @@ local function kernel_on_exit(_, code, _)
             logger:info('subprocess exited cleanly')
         else
             logger:error('subprocess exited with code: ' .. code)
-
-            vim.notify(
-                'Foundry: Python kernel subprocess crashed (exit code: ' .. code .. ')',
-                vim.log.levels.ERROR
-            )
-
         end
+
+        logger:info('-------------------')
+        logger:info(' ')
     end
 end
 
@@ -86,15 +85,15 @@ function M.send_to_subprocess(tbl, bufn)
         return false
     end
 
+    logger:info('kernel message sent:     ' .. tbl.type)
     return true
 end
 
 
 --- starts a new subprocess running the python backend
 --- @param args table table containing arguments
---- @param on_result function stdout message handler function
---- @return table|integer|nil result async calls return a handle (int); others return a result (table); failures return nil
-function M.run_python_command(args, on_result)
+--- @return table|nil result
+function M.run_python_command(args)
     local job = {
         M.venv, '-u',
         M.plugin_root .. '/python/main.py',
@@ -103,31 +102,36 @@ function M.run_python_command(args, on_result)
         unpack(args.command)
     }
 
+    -- run streaming job
     if args.stream then
         local jobid = vim.fn.jobstart(job, {
-            on_stdout = on_result,
+            on_stdout = M.message_handler,
             on_stderr = kernel_on_stderr,
             on_exit = kernel_on_exit
         })
 
         if jobid > 0 then
-            return jobid
+            return { handle = jobid }
         else
             logger:error('failed to start python: ' .. tostring(job))
             return nil
         end
     end
 
+    -- run non-streaming job
     local ok, sys = pcall(vim.system, job)
     if not ok then
         logger:error('failed to start python: ' .. tostring(sys))
         return nil
     end
 
+    -- wait for job to complete
     local result = sys:wait()
     if result.code == 0 and result.stdout ~= '' then
         local ok, result = pcall(vim.fn.json_decode, result.stdout)
         if ok then return result end
+    else
+        logger:error('NONSTREAMING JOB FAILED - code: ' .. result.code .. ', stdout: ' .. result.stdout)
     end
 
     return nil

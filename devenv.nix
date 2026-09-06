@@ -21,6 +21,7 @@ in
 
     lua = {
       enable = true;
+      # remove excessive packages to make LSP quieter
       lsp.package = pkgs.lua-language-server.overrideAttrs (old: {
         post_install = (old.postInstall or "") + ''
           rm -rf $out/share/lua-language-server/meta/default\ utf8
@@ -47,7 +48,7 @@ in
 
   # https://devenv.sh/scripts/
   scripts.hello.exec = ''
-    echo hello from $GREET
+    echo hello from $DEVSHELL
   '';
 
   # https://devenv.sh/basics/

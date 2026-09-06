@@ -3,7 +3,7 @@ import pytest
 
 from nbclient import NotebookClient
 
-from python.jupy_tools.kernel import Kernel
+from python.kernel import Kernel
 
 
 @pytest.fixture(scope="function")

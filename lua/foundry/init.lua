@@ -61,7 +61,16 @@ vim.api.nvim_create_autocmd("BufReadCmd", {
         vim.api.nvim_buf_set_option(ev.buf, "filetype", "python")
         vim.api.nvim_buf_set_name(ev.buf, ev.file)
 
-        core.start_ipython()
+        core.start()
+
+        local ok = vim.wait(5000, function() return core.ready end, 50)
+
+        if not ok then
+            logger:error("timeout on startup")
+            vim.notify("timeout on startup", vim.log.levels.ERROR)
+            return
+        end
+
         core.get_kernel_info(ev.buf)
         core.load_notebook(ev.file)
         set_undo_keymaps(ev.buf)
@@ -81,8 +90,8 @@ vim.api.nvim_create_autocmd({"BufDelete", "ExitPre"}, {
     group = "Foundry",
     pattern = "*.ipynb",
     callback = function()
-        core.stop_ipython()
-        vim.wait(10000, function() return core.ipython_down end, 100)
+        if core.handle then core.stop_ipython() end
+        vim.wait(10000, function() return not core.ready end, 100)
     end
 })
 
