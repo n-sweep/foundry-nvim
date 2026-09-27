@@ -63,17 +63,21 @@ vim.api.nvim_create_autocmd("BufReadCmd", {
 
         core.start()
 
-        local ok = vim.wait(5000, function() return core.ready end, 50)
+        local ok = vim.wait(5000, function() return core.ready or core.error end, 50)
 
         if not ok then
             logger:error("timeout on startup")
             vim.notify("timeout on startup", vim.log.levels.ERROR)
-            return
-        end
 
-        core.get_kernel_info(ev.buf)
-        core.load_notebook(ev.file)
-        set_undo_keymaps(ev.buf)
+        elseif core.error then
+            logger:error(core.error)
+
+        else
+            core.get_kernel_info(ev.buf)
+            core.load_notebook(ev.file)
+            set_undo_keymaps(ev.buf)
+
+        end
     end,
 })
 

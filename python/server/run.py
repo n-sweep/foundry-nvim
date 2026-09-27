@@ -81,6 +81,8 @@ def push_image(img_data: str, mime: str, message: dict) -> None:
         The originating Lua message for the cell execution that produced the image.
     """
 
+    logging.info('pushing image to plot server: ', message)
+
     with _subscribers_lock:
         for q in _subscribers:
             q.put({'img': img_data, 'mime': mime, 'message': message})

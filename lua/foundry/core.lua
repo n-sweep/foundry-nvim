@@ -3,6 +3,7 @@ local M = {
     cells = {},
     cell_order = {},
     ready = false,
+    error = nil,
     on_ready = nil
 }
 
@@ -536,6 +537,12 @@ function M.handle_kernel_message(_, data, _)
                         local cell = M.cells[result.cell_id]
                         cell.status = 'Error'
                         cell:update_extmarks(result)
+
+                    elseif result.type == 'startup_failed' then
+                        M.ready = false
+                        M.error = result.message
+                        M.stop_ipython()
+                        vim.notify("Foundry missing Python dependency: " .. result.message, vim.log.levels.ERROR)
                     end
 
                 else

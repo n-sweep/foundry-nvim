@@ -5,8 +5,10 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from main import StreamIO
 
+import json
 import logging
 import nbformat
+import traceback
 import zmq
 
 from jupyter_client.manager import KernelManager as KM
@@ -122,21 +124,34 @@ class Kernel:
                 output['outputs'].append(fmt_output)
 
                 logging.info(f"output message: {msg_type}")
+                logging.info(fmt_output['data'])
 
-                # display_data
-                for mime in ('image/png', 'image/jpeg', 'image/gif', 'image/svg+xml'):
-                    img = fmt_output.get('data', {}).get(mime)
+                mime = "application/vnd.plotly.v1+json"
+                plotly_json = fmt_output.get('data', {}).get(mime)
+                img = None
 
-                    if img is None:
-                        continue
+                if plotly_json is not None:
+                    import plotly.io as pio
 
-                    if self.image_server is None:
-                        logging.warning(f"no image server available for {mime} data")
-                        break
+                    fig = pio.from_json(json.dumps(plotly_json))
+                    img = str(pio.to_image(fig, format='png'))
 
+                else:
+                    for m in ('image/png', 'image/jpeg', 'image/gif', 'image/svg+xml'):
+                        img = fmt_output.get('data', {}).get(m)
+                        if img is not None:
+                            mime = m
+                            break
+
+                if img is None or self.image_server is None:
+                    logging.warning(f"no image server available for {mime} data")
+                    return
+
+                try:
                     from server.run import push_image
                     push_image(img, mime, output['data']['message'])
-                    break
+                except:
+                    logging.error(f"plot failed: {traceback.format_exc()}")
 
             case 'error':
                 output['status'] = 'error'
@@ -315,7 +330,11 @@ class KernelManager:
             self.restart_kernel(kn)
 
         elif message["type"] == "shutdown":
-            self.shutdown_kernel(kn)
+            match message["target"]:
+                case "all":
+                    self.shutdown_all()
+                case "kernel":
+                    self.shutdown_kernel(kn)
 
     def shutdown_kernel(self, kn: Kernel) -> None:
         """Shut down the specified kernel and remove it from the manager.
