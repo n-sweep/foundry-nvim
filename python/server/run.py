@@ -1,5 +1,4 @@
 import base64
-import json
 import logging
 import os
 import queue
@@ -22,10 +21,6 @@ PLOT_COLS = (
     'id, mime, created_at, cell_id, '
     f"CASE WHEN mime = '{PLOTLY_MIME}' THEN data END AS data"
 )
-
-_subscribers: list[queue.Queue] = []
-_subscribers_lock = threading.Lock()
-
 
 class QuietHandler(WSGIRequestHandler):
     """WSGIRequestHandler that routes logs to Python's logging module
@@ -239,7 +234,7 @@ def push_image(img_data: str, mime: str, message: dict) -> None:
         The originating Lua message for the cell execution that produced the image.
     """
 
-    logging.info('pushing image to plot server: ', message)
+    logging.info('pushing image to plot server: %s', message)
 
     try:
         if mime == PLOTLY_MIME:
@@ -254,38 +249,11 @@ def push_image(img_data: str, mime: str, message: dict) -> None:
     except Exception:
         logging.exception('failed to store plot')
 
-    with _subscribers_lock:
-        for q in _subscribers:
-            q.put({'img': img_data, 'mime': mime, 'message': message})
-
-
-@app.route('/stream')
-def stream():
-    """SSE endpoint that streams image data to connected clients.
-
-    Each client connection gets its own queue. Images pushed via push_image
-    are broadcast to all active queues. The queue is removed when the client
-    disconnects.
-    """
-    q = queue.Queue()
-    with _subscribers_lock:
-        _subscribers.append(q)
-
-    def generate():
-        try:
-            while True:
-                data_str = json.dumps(q.get())
-                yield f'data: {data_str}\n\n'
-        finally:
-            with _subscribers_lock:
-                _subscribers.remove(q)
-
-    return Response(stream_with_context(generate()), mimetype='text/event-stream')
-
 
 @app.route('/')
 def index():
-    return render_template('index.html')
+    plots = get_recent_plots()
+    return render_template('index.html', plots=plots)
 
 
 @app.get('/plot/<int:plot_id>/')

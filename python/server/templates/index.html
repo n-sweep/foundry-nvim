@@ -1,21 +1,40 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Foundry-NVIM Plot Viewer</title>
-    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32'%3E%3Ctext x='0' y='25' font-size='30'%3E%F0%9F%93%88%3C/text%3E%3C/svg%3E" />
-    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
-    <style>
-    </style>
-</head>
-<body>
-    <div>
-        <p id="title"></p>
-        <img id="output" src="" alt="" style="display: none;" />
-        <p id="placeholder">Waiting for output...</p>
-    </div>
+{% extends "base.html" %}
 
-    <script src="{{ url_for('static', filename='js/plot.js') }}"></script>
-</body>
-</html>
+
+{% block content %}
+
+<div id="top-bar">
+    <span id="connection-indicator">🔴</span>
+    <span id="server-address">[{{ request.host }}]</span>
+    <span id="created-date">{% if plots %}{{ plots[0].created_at }}{% else %}No plot data to show{% endif %}</span>
+    <span id="title-text"></span>
+</div>
+
+<div id="sidebar" hx-ext="sse" sse-connect="{{ url_for('sse_stream') }}">
+    <ul id="recent-plots" sse-swap="new-plot" hx-swap="afterbegin">
+        {% for plot in plots %}
+            {% include "partials/plot_list_item.html" %}
+        {% else %}
+            <li class="empty">No plots yet</li>
+        {% endfor %}
+    </ul>
+</div>
+
+<div id="main-content">
+    <div id="plot-container">
+        {% if plots %}
+            {% set plot = plots[0] %}
+            {% include "partials/plot.html" %}
+        {% else %}
+            <p>No plots to display</p>
+        {% endif %}
+    </div>
+</div>
+
+{% endblock %}
+
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/plot.js') }}"></script>
+<script src="{{ url_for('static', filename='js/events.js') }}"></script>
+{% endblock %}
