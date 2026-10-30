@@ -7,8 +7,9 @@ import socket
 import sqlite3
 import threading
 from datetime import datetime, timezone
+from typing import Generator
 
-from flask import Flask, Response, render_template, stream_with_context
+from flask import Flask, Response, abort, render_template, stream_with_context
 from werkzeug.serving import make_server, WSGIRequestHandler
 
 app = Flask(__name__)
@@ -195,6 +196,35 @@ def start_plot_server(
     return url
 
 
+class SSEBroker:
+    """in-process pub/sub broker for server-sent events."""
+
+    def __init__(self) -> None:
+        self.clients: list[queue.Queue] = []
+        self.lock = threading.Lock()
+
+    def subscribe(self) -> queue.Queue:
+        """register a new subscriber and return its queue."""
+        q: queue.Queue = queue.Queue()
+        with self.lock:
+            self.clients.append(q)
+        return q
+
+    def unsubscribe(self, q: queue.Queue) -> None:
+        """remove a subscriber queue."""
+        with self.lock:
+            self.clients.remove(q)
+
+    def publish(self, event_type: str, data: dict) -> None:
+        """broadcast an event to all subscribers."""
+        with self.lock:
+            for q in self.clients:
+                q.put((event_type, data))
+
+
+broker = SSEBroker()
+
+
 def push_image(img_data: str, mime: str, message: dict) -> None:
     """Store image data and push it to all connected SSE clients.
 
@@ -219,7 +249,8 @@ def push_image(img_data: str, mime: str, message: dict) -> None:
         else:
             data = base64.b64decode(img_data)
 
-        create_plot(data, mime, message.get('cell_id', ''))
+        plot = create_plot(data, mime, message.get('cell_id', ''))
+        broker.publish('new-plot', plot)
     except Exception:
         logging.exception('failed to store plot')
 
@@ -255,6 +286,59 @@ def stream():
 @app.route('/')
 def index():
     return render_template('index.html')
+
+
+@app.get('/plot/<int:plot_id>/')
+def plot(plot_id: int) -> str:
+    """render the detail partial for a single plot."""
+    p = get_plot(plot_id)
+    if p is None:
+        abort(404)
+    return render_template('partials/plot.html', plot=p)
+
+
+@app.get('/plot/<int:plot_id>/image')
+def plot_image(plot_id: int) -> Response:
+    """serve the stored bytes of an image plot."""
+    p = get_plot(plot_id)
+    if p is None or not p['mime'].startswith('image/'):
+        abort(404)
+    return Response(
+        p['data'],
+        mimetype=p['mime'],
+        headers={
+            'Cache-Control': 'public, max-age=31536000, immutable',
+            'X-Content-Type-Options': 'nosniff',
+            'Content-Security-Policy': 'sandbox',
+        },
+    )
+
+
+@app.get('/events/')
+def sse_stream() -> Response:
+    """SSE endpoint that streams rendered plot list items to connected clients."""
+
+    @stream_with_context
+    def event_generator() -> Generator[str, None, None]:
+        q = broker.subscribe()
+        yield ': connected\n\n'
+        try:
+            while True:
+                try:
+                    event_type, plot = q.get(timeout=1)
+                except queue.Empty:
+                    continue
+                html = render_template('partials/plot_list_item.html', plot=plot)
+                data_lines = '\n'.join(f'data: {line}' for line in html.splitlines())
+                yield f'event: {event_type}\n{data_lines}\n\n'
+        finally:
+            broker.unsubscribe(q)
+
+    return Response(
+        event_generator(),
+        mimetype='text/event-stream',
+        headers={'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no'},
+    )
 
 
 if __name__ == '__main__':
