@@ -1,3 +1,4 @@
+import base64
 import json
 import logging
 import os
@@ -195,12 +196,13 @@ def start_plot_server(
 
 
 def push_image(img_data: str, mime: str, message: dict) -> None:
-    """Push image data to all connected SSE clients.
+    """Store image data and push it to all connected SSE clients.
 
     Parameters
     ----------
     img_data : str
-        The image data; base64-encoded for raster formats, raw XML for image/svg+xml.
+        The image data; base64-encoded for raster formats, raw XML for
+        image/svg+xml, the figure JSON for the plotly mime type.
     mime : str
         The MIME type of the image, e.g. 'image/png', 'image/svg+xml'.
     message : dict
@@ -208,6 +210,18 @@ def push_image(img_data: str, mime: str, message: dict) -> None:
     """
 
     logging.info('pushing image to plot server: ', message)
+
+    try:
+        if mime == PLOTLY_MIME:
+            data = img_data
+        elif mime == 'image/svg+xml':
+            data = img_data.encode('utf-8')
+        else:
+            data = base64.b64decode(img_data)
+
+        create_plot(data, mime, message.get('cell_id', ''))
+    except Exception:
+        logging.exception('failed to store plot')
 
     with _subscribers_lock:
         for q in _subscribers:
