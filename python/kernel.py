@@ -131,10 +131,7 @@ class Kernel:
                 img = None
 
                 if plotly_json is not None:
-                    import plotly.io as pio
-
-                    fig = pio.from_json(json.dumps(plotly_json))
-                    img = str(pio.to_image(fig, format='png'))
+                    img = json.dumps(plotly_json)
 
                 else:
                     for m in ('image/png', 'image/jpeg', 'image/gif', 'image/svg+xml'):
