@@ -1,21 +1,101 @@
 body {
-    margin: 0;
-    background: #1e1e1e;
-    display: flex;
-    justify-content: center;
-    align-items: flex-start;
-    min-height: 100vh;
-    padding: 2rem;
+    background-color: #222;
+    color: #fff;
+    font-family: 'mono';
+    font-size: 9pt;
+}
+
+.plot-item {
+    color: var(--li-text-color);
+}
+
+.plot-item:hover, .plot-item.selected {
+    color: #636efa;
+    font-weight: bold;
+    opacity: 0.6;
+}
+
+#main-content {
+    margin-right: 220px;
+    margin-top: 35px;
+    z-index: 1;
+}
+
+#plot {
+    background-color: #222;
+    border-radius: 12px;
     box-sizing: border-box;
+    height: 90vh;
+    padding: 5px;
 }
 
-#output {
-    max-width: 100%;
+#plot .plotly {
+    border-radius: 12px;
+    overflow: hidden;
+}
+
+.plot-image {
+    height: 90vh;
+    text-align: center;
+}
+
+.plot-image img {
     display: block;
+    margin: 0 auto;
+    max-height: 90vh;
+    max-width: 100%;
+    object-fit: contain;
 }
 
-#placeholder {
-    color: #666;
-    font-family: monospace;
-    margin-top: 2rem;
+.plot-item-image {
+    display: block;
+    pointer-events: none;
+    width: 100%;
+}
+
+#sidebar {
+    height: calc(100vh - 25px);
+    margin-bottom: 50px;
+    overflow-y: auto;
+    position: fixed;
+    right: 5px;
+    width: 210px;
+    z-index: 10;
+}
+
+#sidebar ul {
+    list-style-type: none;
+    padding: 0;
+    margin-top: 0;
+    margin-right: 5px;
+}
+
+#sidebar ul li {
+    background-color: #111;
+    border-radius: 5px;
+    margin-bottom: 5px;
+    overflow: hidden;
+}
+
+.plot-item-date {
+    display: block;
+    padding: 5px;
+}
+
+#top-bar {
+    align-items: center;
+    background-color: #111;
+    display: flex;
+    height: 20px;
+    left: 0;
+    padding: 3px;
+    position: fixed;
+    top: 0;
+    width: 100%;
+    z-index: 20;
+}
+
+#top-bar span {
+    padding-right: 5px;
+    padding-left: 5px;
 }

@@ -1,0 +1,9 @@
+{% if plot['mime'].startswith('image/') %}
+<div class="plot-image" data-created-at="{{ plot['created_at'] }}" data-title="{{ plot['cell_id'] }}">
+    <img src="{{ url_for('plot_image', plot_id=plot['id']) }}" alt="">
+</div>
+{% else %}
+<div data-plot-json="{{ plot['data'] }}" data-created-at="{{ plot['created_at'] }}" data-title="{{ plot['cell_id'] }}">
+    <div id="plot"></div>
+</div>
+{% endif %}

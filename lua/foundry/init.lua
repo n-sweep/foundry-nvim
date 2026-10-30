@@ -94,8 +94,9 @@ vim.api.nvim_create_autocmd({"BufDelete", "ExitPre"}, {
     group = "Foundry",
     pattern = "*.ipynb",
     callback = function()
-        if core.handle then core.stop_ipython() end
-        vim.wait(10000, function() return not core.ready end, 100)
+        if core.stop_ipython() then
+            vim.wait(10000, function() return not core.ready end, 100)
+        end
     end
 })
 

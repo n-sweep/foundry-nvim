@@ -1,0 +1,9 @@
+<li class="plot-item" hx-get="{{ url_for('plot', plot_id=plot['id']) }}" hx-target="#plot-container" hx-swap="innerHTML">
+    {% if plot['mime'].startswith('image/') %}
+    <img class="plot-item-image" loading="lazy" src="{{ url_for('plot_image', plot_id=plot['id']) }}" alt="">
+    <span class="plot-item-date">{{ plot['created_at'] }}</span>
+    {% else %}
+    <span class="plot-item-date">{{ plot['created_at'] }}</span>
+    <div class="plot-item-preview" data-plot-json="{{ plot['data'] }}"></div>
+    {% endif %}
+</li>
