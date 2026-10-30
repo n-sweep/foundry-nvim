@@ -586,10 +586,10 @@ end
 
 
 --- Stops the entire Python subprocess and all kernels
---- Note: M.handle will be reset to 0 by the on_exit callback when subprocess terminates
---- @return boolean success
---- @return nil
+--- Note: bridge.handle will be reset to 0 by the on_exit callback when subprocess terminates
+--- @return boolean sent false if there is no subprocess or the message failed to send
 function M.stop_ipython()
+    if bridge.handle < 1 then return false end
     return bridge.send_to_subprocess({ type = 'shutdown', target = 'all' })
 end
 
